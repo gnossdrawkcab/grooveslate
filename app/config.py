@@ -22,6 +22,7 @@ class Settings:
     scnet_config_url: str
     scnet_model_url: str
     gpu_lock_path: Path = Path("/tmp/grooveslate-gpu.lock")
+    bs_roformer_chunk_size: int = 294400
     app_password: str = ""
     session_secret: str = ""
     media_extractor_enabled: bool = False
@@ -57,6 +58,9 @@ class Settings:
             ),
             gpu_lock_path=Path(
                 os.getenv("GPU_LOCK_PATH", "/tmp/grooveslate-gpu.lock")
+            ),
+            bs_roformer_chunk_size=int(
+                os.getenv("BS_ROFORMER_CHUNK_SIZE", "294400")
             ),
             app_password=os.getenv("APP_PASSWORD", ""),
             session_secret=os.getenv("APP_SESSION_SECRET", ""),

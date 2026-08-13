@@ -556,11 +556,17 @@ class Processor:
         report("Model setup", 5, "Checking the RoFormer checkpoint cache")
         self._run_gpu(
             [
-                "bs-roformer-infer",
+                sys.executable,
+                "-m",
+                "app.roformer_runner",
                 "--input_folder",
                 str(output_dir.parent / "input"),
                 "--store_dir",
                 str(separated),
+                "--models_dir",
+                str(self.settings.data_root / "models" / "bs-roformer"),
+                "--chunk_size",
+                str(self.settings.bs_roformer_chunk_size),
             ],
             report,
             on_output=lambda line, percent: report(

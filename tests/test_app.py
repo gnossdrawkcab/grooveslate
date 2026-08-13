@@ -23,6 +23,7 @@ from app.jobs import JobQueue, JobStore, Processor
 from app.imports import ImportService
 from app.library import MusicLibrary, Track
 from app.main import create_app, share_slug, slugify_title
+from app.roformer_runner import write_inference_config
 
 
 def settings(tmp_path: Path) -> Settings:
@@ -736,6 +737,21 @@ def test_gpu_runner_retries_cuda_oom_once(tmp_path: Path, monkeypatch):
 
     assert len(attempts) == 2
     assert any(report[0] == "Recovering GPU memory" for report in reports)
+
+
+def test_roformer_low_memory_config_only_changes_inference_window(tmp_path: Path):
+    source = tmp_path / "source.yaml"
+    destination = tmp_path / "tuned.yaml"
+    source.write_text(
+        "model:\n  dim: 256\ninference:\n  num_overlap: 2\n  chunk_size: 588800\n",
+        encoding="utf-8",
+    )
+
+    write_inference_config(source, destination, 294400)
+
+    assert destination.read_text(encoding="utf-8") == (
+        "model:\n  dim: 256\ninference:\n  num_overlap: 2\n  chunk_size: 294400\n"
+    )
 
 
 def test_processor_skips_complete_model_with_existing_output(

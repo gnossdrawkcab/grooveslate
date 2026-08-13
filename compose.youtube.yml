@@ -17,6 +17,7 @@ services:
       PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SCNET_ENABLED: "0"
       BS_ROFORMER_ENABLED: "1"
+      BS_ROFORMER_CHUNK_SIZE: "294400"
       MEDIA_EXTRACTOR_ENABLED: "1"
       APP_USERS: ${APP_USERS:-Pat}
       APP_ADMIN_USERS: ${APP_ADMIN_USERS:-Pat}
