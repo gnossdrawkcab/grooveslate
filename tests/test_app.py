@@ -490,6 +490,7 @@ def test_frontend_and_health(tmp_path: Path):
         assert 'linkedMixState(available)' in javascript
         assert 'class="solo-toggle"' in javascript
         assert 'soloed.length && !soloedSet.has(stem)' in javascript
+        assert '<details class="custom-mixer" open>' in homepage.text
         assert "function applyPitch" in javascript
         assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
         assert "Capture at the actual swap" in javascript
