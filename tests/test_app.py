@@ -258,6 +258,36 @@ def test_youtube_only_mode_blocks_private_sources_and_attests_imports(tmp_path: 
         assert response.json()["track"]["title"] == "Song"
 
 
+def test_public_demo_job_is_visible_to_anonymous_guest(tmp_path: Path):
+    app = create_app(
+        replace(settings(tmp_path), youtube_only=True, app_password="site-password"),
+        start_worker=False,
+    )
+    track = Track(
+        id="demo-track",
+        relative_path="Imports/Your Biggest Fan Master.mp3",
+        title="Your Biggest Fan Master",
+        folder="Imports/Uploads",
+        extension="mp3",
+        size=100,
+        modified=0,
+        artist="Nick Funyak",
+    )
+    job = app.state.store.create(track, "Pat")
+    app.state.store.update(job["id"], lambda saved: saved.update(public_demo=True))
+
+    with TestClient(app) as client:
+        page = client.get("/songs/nick-funyak-your-biggest-fan-master")
+        response = client.get(f"/api/jobs/{job['id']}")
+        private_api = client.get("/api/library")
+
+    assert page.status_code == 200
+    assert "grooveslate_demo" in client.cookies
+    assert response.status_code == 200
+    assert response.json()["track"]["artist"] == "Nick Funyak"
+    assert private_api.status_code == 401
+
+
 def test_youtube_challenge_draws_from_search(tmp_path: Path, monkeypatch):
     app = create_app(replace(settings(tmp_path), youtube_only=True), start_worker=False)
     monkeypatch.setattr(app.state.imports, "search", lambda query, limit: [{"id": "video", "url": "https://youtu.be/video", "title": "Funk Song", "channel": "Band", "duration": 180}])
@@ -453,6 +483,13 @@ def test_frontend_and_health(tmp_path: Path):
         assert 'id="draw-selected-genre"' in homepage.text
         assert 'accept.textContent = "Preparing song…"' in javascript
         assert '["Remove bass", ["bass"]]' in javascript
+        assert 'class="drum-toggle"' in javascript
+        assert 'class="solo-drums"' in javascript
+        assert 'removed ? "Restore drums" : "Remove drums"' in javascript
+        assert 'url.searchParams.set("remove"' in javascript
+        assert 'linkedMixState(available)' in javascript
+        assert 'class="solo-toggle"' in javascript
+        assert 'soloed.length && !soloedSet.has(stem)' in javascript
         assert "function applyPitch" in javascript
         assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
         assert "Capture at the actual swap" in javascript
@@ -523,6 +560,31 @@ def test_remote_imports_reject_private_hosts_and_disabled_youtube(tmp_path: Path
         assert "disabled" in youtube.json()["detail"].lower()
 
 
+def test_youtube_403_retries_with_embedded_player_client(tmp_path: Path, monkeypatch):
+    config = replace(settings(tmp_path), media_extractor_enabled=True)
+    service = ImportService(config, MusicLibrary(config.music_root))
+    calls = []
+
+    def run(command, **_kwargs):
+        calls.append(command)
+        if len(calls) == 1:
+            raise subprocess.CalledProcessError(
+                1,
+                command,
+                stderr="ERROR: unable to download video data: HTTP Error 403: Forbidden",
+            )
+        return subprocess.CompletedProcess(command, 0, stdout="recovered", stderr="")
+
+    monkeypatch.setattr("app.imports.shutil.which", lambda _command: "/usr/bin/yt-dlp")
+    monkeypatch.setattr("app.imports.subprocess.run", run)
+
+    result = service._yt_dlp(["https://www.youtube.com/watch?v=muse"])
+
+    assert result.stdout == "recovered"
+    assert len(calls) == 2
+    assert "youtube:player_client=default,web_embedded" in calls[1]
+
+
 def test_import_manifest_is_loaded_after_restart(tmp_path: Path):
     config = settings(tmp_path)
     first_library = MusicLibrary(
@@ -532,6 +594,7 @@ def test_import_manifest_is_loaded_after_restart(tmp_path: Path):
     imported = ImportService(config, first_library).import_upload(
         "Restart Song.flac",
         stream=BytesIO(b"persisted"),
+        artist="Nick Funyak",
     )
 
     restarted = MusicLibrary(
@@ -541,6 +604,7 @@ def test_import_manifest_is_loaded_after_restart(tmp_path: Path):
     restored = restarted.get(imported.id)
 
     assert restored.title == "Restart Song"
+    assert restored.artist == "Nick Funyak"
     assert restored.source_type == "upload"
     assert restarted.path_for(restored.id).read_bytes() == b"persisted"
 
@@ -871,3 +935,23 @@ def test_stem_mix_can_remove_stems_and_restore_all(tmp_path: Path):
     assert all_stems.is_file()
     assert without_drums_id != all_stems_id
     assert without_drums.read_bytes() != all_stems.read_bytes()
+
+
+@pytest.mark.skipif(shutil.which("ffmpeg") is None, reason="ffmpeg is required")
+def test_generated_mix_has_cached_mp3_download(tmp_path: Path):
+    config = settings(tmp_path)
+    processor = Processor(config, MusicLibrary(config.music_root), JobStore(config.data_root / "jobs"))
+    source = tmp_path / "mix.flac"
+    subprocess.run([
+        "ffmpeg", "-hide_banner", "-loglevel", "error", "-f", "lavfi",
+        "-i", "sine=frequency=440:duration=0.1", str(source),
+    ], check=True)
+
+    first = processor.render_mp3(source)
+    first_mtime = first.stat().st_mtime_ns
+    second = processor.render_mp3(source)
+
+    assert first == second
+    assert first.suffix == ".mp3"
+    assert first.stat().st_size > 0
+    assert second.stat().st_mtime_ns == first_mtime

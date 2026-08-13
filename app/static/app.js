@@ -584,7 +584,9 @@ function renderSelection() {
   const processing = ["queued", "processing"].includes(state.job?.status);
   const ready = sameJob && state.job?.status === "complete";
   $("#selected-title").textContent = track ? track.title : "Choose a track to begin";
-  $("#selected-path").textContent = track ? track.relative_path : "Search, upload, or browse your private library.";
+  $("#selected-path").textContent = track
+    ? [track.artist, track.relative_path].filter(Boolean).join(" · ")
+    : "Search, upload, or browse your private library.";
   $("#run-button").disabled = !track || processing || ready;
   $("#run-button span").textContent = processing && sameJob
     ? "Processing…"
@@ -900,41 +902,105 @@ async function loadStems(jobId, model, card) {
     const available = new Set(stems.map((stem) => stem.name));
     const container = $(".stem-buttons", card);
     container.innerHTML = stems.map((stem) => `
-      <button class="stem-toggle ${stem.name === "drums" ? "removed" : ""}" data-stem="${stem.name}">
-        ${escapeHtml(stem.name)}
-      </button>
+      <div class="stem-channel" data-stem="${escapeHtml(stem.name)}">
+        <span>${escapeHtml(stem.name)}</span>
+        <div role="group" aria-label="${escapeHtml(stem.name)} channel controls">
+          <button class="stem-toggle ${stem.name === "drums" ? "removed" : ""}" data-stem="${escapeHtml(stem.name)}" aria-label="Mute ${escapeHtml(stem.name)}" aria-pressed="${stem.name === "drums"}">M</button>
+          <button class="solo-toggle" data-stem="${escapeHtml(stem.name)}" aria-label="Solo ${escapeHtml(stem.name)}" aria-pressed="false">S</button>
+        </div>
+      </div>
     `).join("");
     $$(".stem-toggle", container).forEach((button) => {
       button.addEventListener("click", () => {
         button.classList.toggle("removed");
+        button.setAttribute("aria-pressed", String(button.classList.contains("removed")));
+        if (button.classList.contains("removed")) {
+          const solo = $(`.solo-toggle[data-stem="${button.dataset.stem}"]`, card);
+          solo.classList.remove("active");
+          solo.setAttribute("aria-pressed", "false");
+        }
         syncMixPreset(card);
+        syncMixUrl(card);
+        scheduleCustomMix(jobId, model, card);
+      });
+    });
+    $$(".solo-toggle", container).forEach((button) => {
+      button.addEventListener("click", () => {
+        button.classList.toggle("active");
+        button.setAttribute("aria-pressed", String(button.classList.contains("active")));
+        if (button.classList.contains("active")) {
+          const mute = $(`.stem-toggle[data-stem="${button.dataset.stem}"]`, card);
+          mute.classList.remove("removed");
+          mute.setAttribute("aria-pressed", "false");
+        }
+        syncMixPreset(card);
+        syncMixUrl(card);
         scheduleCustomMix(jobId, model, card);
       });
     });
     const presetDefinitions = [
       ["Full mix", []],
-      ["Remove drums", ["drums"]],
       ["Remove bass", ["bass"]],
       ["Remove vocals", ["vocals"]],
       ["Remove guitar", ["guitar"]],
       ["Remove keys", ["piano"]],
     ].filter(([, excluded]) => excluded.every((stem) => available.has(stem)));
     const presets = $(".mix-presets", card);
-    presets.innerHTML = presetDefinitions.map(([label, excluded]) => `
+    const drumControls = available.has("drums") ? `
+      <div class="drum-mix-control" role="group" aria-label="Drum mix shortcuts">
+        <button type="button" class="drum-toggle" data-stem-action="drums">Remove drums</button>
+        <button type="button" class="solo-drums" data-stem-solo-action="drums">Solo drums</button>
+      </div>
+    ` : "";
+    presets.innerHTML = drumControls + presetDefinitions.map(([label, excluded]) => `
       <button type="button" data-mix-preset="${excluded.join(",")}">${label}</button>
     `).join("");
+    $('[data-stem-action="drums"]', presets)?.addEventListener("click", async () => {
+      const drums = $('.stem-toggle[data-stem="drums"]', card);
+      drums.click();
+      window.clearTimeout(card._mixTimer);
+      await buildCustomMix(jobId, model, card);
+    });
+    $('[data-stem-solo-action="drums"]', presets)?.addEventListener("click", async () => {
+      const drums = $('.solo-toggle[data-stem="drums"]', card);
+      drums.click();
+      window.clearTimeout(card._mixTimer);
+      await buildCustomMix(jobId, model, card);
+    });
     $$('[data-mix-preset]', presets).forEach((button) => button.addEventListener("click", async () => {
-      const excluded = new Set(button.dataset.mixPreset.split(",").filter(Boolean));
+      const muted = new Set(button.dataset.mixPreset.split(",").filter(Boolean));
       $$(".stem-toggle", card).forEach((stemButton) => {
-        stemButton.classList.toggle("removed", excluded.has(stemButton.dataset.stem));
+        stemButton.classList.toggle("removed", muted.has(stemButton.dataset.stem));
+        stemButton.setAttribute("aria-pressed", String(stemButton.classList.contains("removed")));
+      });
+      $$(".solo-toggle", card).forEach((soloButton) => {
+        soloButton.classList.remove("active");
+        soloButton.setAttribute("aria-pressed", "false");
       });
       syncMixPreset(card);
+      syncMixUrl(card);
       await buildCustomMix(jobId, model, card);
     }));
+    const linkedMix = linkedMixState(available);
+    if (linkedMix !== null) {
+      $$(".stem-toggle", card).forEach((stemButton) => {
+        stemButton.classList.toggle("removed", linkedMix.muted.has(stemButton.dataset.stem));
+        stemButton.setAttribute("aria-pressed", String(stemButton.classList.contains("removed")));
+      });
+      $$(".solo-toggle", card).forEach((soloButton) => {
+        soloButton.classList.toggle("active", linkedMix.soloed.has(soloButton.dataset.stem));
+        soloButton.setAttribute("aria-pressed", String(soloButton.classList.contains("active")));
+      });
+    }
     syncMixPreset(card);
+    syncMixUrl(card);
     const build = $(".build-mix", card);
     build.disabled = false;
     build.onclick = () => buildCustomMix(jobId, model, card);
+    const excluded = currentMixState(card).excluded;
+    if (linkedMix !== null && excluded.join(",") !== "drums") {
+      await buildCustomMix(jobId, model, card);
+    }
   } catch (error) {
     state.stemsLoaded.delete(cacheKey);
     $(".stem-buttons", card).innerHTML = `<i>${escapeHtml(error.message)}</i>`;
@@ -942,10 +1008,58 @@ async function loadStems(jobId, model, card) {
 }
 
 function syncMixPreset(card) {
-  const excluded = $$(".stem-toggle.removed", card).map((button) => button.dataset.stem).sort().join(",");
+  const { muted, soloed } = currentMixState(card);
+  const mutedValue = muted.join(",");
   $$('[data-mix-preset]', card).forEach((button) => {
-    button.classList.toggle("active", button.dataset.mixPreset.split(",").filter(Boolean).sort().join(",") === excluded);
+    button.classList.toggle("active", !soloed.length && button.dataset.mixPreset.split(",").filter(Boolean).sort().join(",") === mutedValue);
   });
+  const drums = $('[data-stem-action="drums"]', card);
+  if (drums) {
+    const removed = muted.includes("drums");
+    drums.classList.toggle("active", removed);
+    drums.textContent = removed ? "Restore drums" : "Remove drums";
+    drums.setAttribute("aria-pressed", String(removed));
+  }
+  const soloDrums = $('[data-stem-solo-action="drums"]', card);
+  if (soloDrums) {
+    const active = soloed.includes("drums");
+    soloDrums.classList.toggle("active", active);
+    soloDrums.textContent = active ? "Unsolo drums" : "Solo drums";
+    soloDrums.setAttribute("aria-pressed", String(active));
+  }
+}
+
+function linkedMixState(available) {
+  const params = new URLSearchParams(window.location.search);
+  if (!params.has("remove") && !params.has("solo")) return null;
+  const parse = (name) => {
+    const value = (params.get(name) || "").trim().toLowerCase();
+    if (!value || value === "none") return new Set();
+    return new Set(value.split(",").map((stem) => stem.trim()).filter((stem) => available.has(stem)));
+  };
+  return { muted: parse("remove"), soloed: parse("solo") };
+}
+
+function currentMixState(card) {
+  const muted = $$(".stem-toggle.removed", card).map((button) => button.dataset.stem).sort();
+  const soloed = $$(".solo-toggle.active", card).map((button) => button.dataset.stem).sort();
+  const mutedSet = new Set(muted);
+  const soloedSet = new Set(soloed);
+  const excluded = $$(".stem-channel", card)
+    .map((channel) => channel.dataset.stem)
+    .filter((stem) => mutedSet.has(stem) || (soloed.length && !soloedSet.has(stem)))
+    .sort();
+  return { muted, soloed, excluded };
+}
+
+function syncMixUrl(card) {
+  if (!state.job || !window.location.pathname.startsWith("/songs/")) return;
+  const { muted, soloed } = currentMixState(card);
+  const url = new URL(window.location.href);
+  url.searchParams.set("remove", muted.length ? muted.join(",") : "none");
+  if (soloed.length) url.searchParams.set("solo", soloed.join(","));
+  else url.searchParams.delete("solo");
+  window.history.replaceState({ jobId: state.job.id }, "", `${url.pathname}${url.search}${url.hash}`);
 }
 
 function scheduleCustomMix(jobId, model, card) {
@@ -956,7 +1070,7 @@ function scheduleCustomMix(jobId, model, card) {
 
 async function buildCustomMix(jobId, model, card) {
   const build = $(".build-mix", card);
-  const excluded = $$(".stem-toggle.removed", card).map((button) => button.dataset.stem);
+  const { excluded, soloed } = currentMixState(card);
   if (card.dataset.mixBusy === "true") {
     card.dataset.mixPending = "true";
     return;
@@ -964,7 +1078,9 @@ async function buildCustomMix(jobId, model, card) {
   card.dataset.mixBusy = "true";
   build.disabled = true;
   build.textContent = "Building mix…";
-  $(".phase-detail", card).textContent = excluded.length
+  $(".phase-detail", card).textContent = soloed.length
+    ? `Soloing ${soloed.join(" + ")}`
+    : excluded.length
     ? `Removing ${excluded.join(", ")}`
     : "Restoring all separated stems";
   try {
@@ -984,6 +1100,7 @@ async function buildCustomMix(jobId, model, card) {
     card.dataset.baseAudioUrl = mix.audio_url;
     card.dataset.mixId = mix.mix_id || "";
     card.dataset.excluded = (mix.excluded || excluded).join(",");
+    syncMixUrl(card);
     const pitch = Number($(".pitch-select", card)?.value || 0);
     if (pitch) await applyPitch(card, false);
     else await replaceAudioSource(audio, cacheBusted(mix.audio_url));
@@ -1244,9 +1361,9 @@ function slugifyTitle(title) {
 }
 
 function shareSlug(track) {
-  const artist = track.folder && track.folder !== "."
+  const artist = track.artist || (track.folder && track.folder !== "."
     ? track.folder.split("/", 1)[0]
-    : "";
+    : "");
   const match = track.title.match(/\s+-\s+(?:\d{1,3}(?:-\d{1,3})?)\s+-\s+(.+)$/);
   const song = match ? match[1] : track.title;
   return slugifyTitle(`${artist} ${song}`.trim());

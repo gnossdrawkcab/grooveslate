@@ -240,6 +240,7 @@ class MusicLibrary:
                             extension=source.suffix.lower().lstrip("."),
                             size=stat.st_size,
                             modified=int(stat.st_mtime),
+                            artist=metadata.get("artist", ""),
                             source_type=metadata.get("source_type", "remote_url"),
                             source_label=metadata.get("source_label", "Imported audio"),
                             thumbnail_url=metadata.get("thumbnail_url", ""),

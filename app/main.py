@@ -106,7 +106,9 @@ def slugify_title(title: str) -> str:
 
 def share_slug(track: dict) -> str:
     folder = track.get("folder", "")
-    artist = folder.split("/", 1)[0] if folder and folder != "." else ""
+    artist = track.get("artist", "") or (
+        folder.split("/", 1)[0] if folder and folder != "." else ""
+    )
     title = track.get("title", "track")
     numbered_title = re.search(
         r"\s+-\s+(?:\d{1,3}(?:-\d{1,3})?)\s+-\s+(.+)$",
@@ -195,10 +197,68 @@ def create_app(
             return None
         return user if hmac.compare_digest(value, guest_token(user)) else None
 
+    def demo_token(job_id: str) -> str:
+        signature = hmac.new(
+            session_secret.encode(),
+            f"grooveslate-demo-v1:{job_id}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{job_id}:{signature}"
+
+    def demo_job(value: str) -> dict | None:
+        job_id, separator, _ = value.partition(":")
+        if not separator or not hmac.compare_digest(value, demo_token(job_id)):
+            return None
+        try:
+            job = store.get(job_id)
+        except KeyError:
+            return None
+        return job if job.get("public_demo") is True else None
+
+    def demo_from_song_path(path: str) -> dict | None:
+        match = re.fullmatch(r"/songs/([^/]+)/?", path)
+        if not match:
+            return None
+        for job in store.list(10000):
+            if job.get("public_demo") is True and share_slug(job.get("track", {})) == match[1]:
+                return job
+        return None
+
     @app.middleware("http")
     async def password_gate(request: Request, call_next):
         if request.url.path in {"/login", "/api/health"}:
             return await call_next(request)
+        if request.method == "GET" and request.url.path in {
+            "/app.js", "/practice.js", "/styles.css", "/logo.svg",
+            "/manifest.webmanifest", "/service-worker.js",
+        }:
+            return await call_next(request)
+        linked_demo = demo_from_song_path(request.url.path)
+        active_demo = linked_demo or demo_job(request.cookies.get("grooveslate_demo", ""))
+        if active_demo:
+            job_id = active_demo["id"]
+            safe_demo_api = (
+                request.url.path in {
+                    "/api/session", "/api/completed", "/api/community",
+                    "/api/imports/capabilities", f"/api/jobs/{job_id}",
+                    f"/api/songs/{share_slug(active_demo.get('track', {}))}",
+                }
+                or request.url.path.startswith(f"/api/jobs/{job_id}/")
+                or request.url.path.startswith(
+                    f"/songs/{share_slug(active_demo.get('track', {}))}/"
+                )
+            )
+            if linked_demo or safe_demo_api:
+                request.state.user = "Demo"
+                response = await call_next(request)
+                if linked_demo:
+                    response.set_cookie(
+                        "grooveslate_demo", demo_token(job_id), max_age=60 * 60 * 24 * 30,
+                        httponly=True,
+                        secure=request.headers.get("x-forwarded-proto") == "https",
+                        samesite="lax",
+                    )
+                return response
         if config.youtube_only:
             forwarded = request.headers.get("cf-connecting-ip") or request.headers.get(
                 "x-forwarded-for", ""
@@ -395,14 +455,16 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
 
     @app.post("/api/imports/upload", status_code=201)
     async def import_upload(
+        request: Request,
         file: UploadFile = File(...),
         title: str = Form(default=""),
+        artist: str = Form(default=""),
     ) -> dict:
-        if config.youtube_only:
+        if config.youtube_only and request.state.user.casefold() not in admin_keys:
             await file.close()
             raise HTTPException(status_code=404, detail="Uploads are unavailable on this site")
         try:
-            track = imports.import_upload(file.filename or "upload", file.file, title)
+            track = imports.import_upload(file.filename or "upload", file.file, title, artist)
         except ValueError as exc:
             raise HTTPException(status_code=400, detail=str(exc)) from None
         finally:
@@ -437,7 +499,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         return FileResponse(path)
 
     def visible_to(job: dict, user: str) -> bool:
-        return job.get("user") == user
+        return job.get("user") == user or job.get("public_demo") is True
 
     def owned_job(job_id: str, user: str) -> dict:
         job = store.get(job_id)
@@ -674,6 +736,16 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             queue.submit(job["id"])
         return job
 
+    @app.post("/api/jobs/{job_id}/public-demo")
+    def publish_demo(job_id: str, request: Request) -> dict:
+        if request.state.user.casefold() not in admin_keys:
+            raise HTTPException(status_code=403, detail="Admin access required")
+        try:
+            owned_job(job_id, request.state.user)
+            return store.update(job_id, lambda job: job.update(public_demo=True))
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Job not found") from None
+
     @app.get("/api/jobs/{job_id}")
     def get_job(job_id: str, request: Request) -> dict:
         try:
@@ -895,14 +967,15 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
     @app.get("/api/jobs/{job_id}/download/{model}")
     def download_result(job_id: str, model: str, request: Request):
         path, job = result_file(job_id, model, request.state.user)
+        path = processor.render_mp3(path)
         safe_title = "".join(
             character if character.isalnum() or character in " -_." else "_"
             for character in job["track"]["title"]
         ).strip()
         return FileResponse(
             path,
-            media_type="audio/flac",
-            filename=f"{safe_title} - {MODELS[model]['name']} - no drums.flac",
+            media_type="audio/mpeg",
+            filename=f"{safe_title} - {MODELS[model]['name']} - no drums.mp3",
         )
 
     @app.get("/api/jobs/{job_id}/waveform/{model}")
@@ -935,6 +1008,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         except KeyError:
             raise HTTPException(status_code=404, detail="Song not found") from None
         path, _ = result_file(job["id"], model, request.state.user)
+        path = processor.render_mp3(path)
         return FileResponse(path, media_type="audio/flac")
 
     @app.get("/songs/{slug}/download/{model}")
@@ -950,8 +1024,8 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         ).strip()
         return FileResponse(
             path,
-            media_type="audio/flac",
-            filename=f"{safe_title} - {MODELS[model]['name']} - no drums.flac",
+            media_type="audio/mpeg",
+            filename=f"{safe_title} - {MODELS[model]['name']} - no drums.mp3",
         )
 
     @app.get("/api/jobs/{job_id}/stems/{model}")
@@ -1026,14 +1100,15 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             raise HTTPException(status_code=404, detail="Mix not found")
         if not download:
             return FileResponse(path, media_type="audio/flac")
+        path = processor.render_mp3(path)
         safe_title = "".join(
             character if character.isalnum() or character in " -_." else "_"
             for character in job["track"]["title"]
         ).strip()
         return FileResponse(
             path,
-            media_type="audio/flac",
-            filename=f"{safe_title} - {MODELS[model]['name']} - custom mix.flac",
+            media_type="audio/mpeg",
+            filename=f"{safe_title} - {MODELS[model]['name']} - custom mix.mp3",
         )
 
     @app.post("/api/jobs/{job_id}/pitch/{model}")
@@ -1102,14 +1177,15 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             raise HTTPException(status_code=400, detail=str(exc)) from None
         if not download:
             return FileResponse(path, media_type="audio/flac")
+        path = processor.render_mp3(path)
         safe_title = "".join(
             character if character.isalnum() or character in " -_." else "_"
             for character in job["track"]["title"]
         ).strip()
         return FileResponse(
             path,
-            media_type="audio/flac",
-            filename=f"{safe_title} - {MODELS[model]['name']} - custom mix.flac",
+            media_type="audio/mpeg",
+            filename=f"{safe_title} - {MODELS[model]['name']} - custom mix.mp3",
         )
 
     static_root = Path(__file__).parent / "static"

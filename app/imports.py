@@ -120,6 +120,7 @@ class ImportService:
         source_type: str,
         source_label: str,
         provider: str,
+        artist: str = "",
         thumbnail_url: str = "",
     ) -> Track:
         destination_dir = self.root / import_id
@@ -131,6 +132,7 @@ class ImportService:
             "track_id": import_id,
             "filename": destination.name,
             "title": _clean_title(title),
+            "artist": _clean_title(artist) if artist else "",
             "source_type": source_type,
             "source_label": source_label,
             "provider": provider,
@@ -142,7 +144,7 @@ class ImportService:
         self.library.scan(force=True)
         return self.library.get(import_id)
 
-    def import_upload(self, filename: str, stream, title: str = "") -> Track:
+    def import_upload(self, filename: str, stream, title: str = "", artist: str = "") -> Track:
         suffix = Path(filename).suffix.casefold()
         if suffix not in AUDIO_EXTENSIONS:
             raise ValueError("Upload an MP3, FLAC, WAV, M4A, AAC, OGG, or Opus file")
@@ -169,6 +171,7 @@ class ImportService:
                 source_type="upload",
                 source_label="Uploaded audio",
                 provider="Uploads",
+                artist=artist,
             )
         except Exception:
             temporary.unlink(missing_ok=True)
@@ -230,24 +233,42 @@ class ImportService:
     def _yt_dlp(self, arguments: list[str], timeout: int = 120) -> subprocess.CompletedProcess:
         if not self.extractor_available:
             raise ValueError("The optional media extractor is disabled or unavailable")
-        try:
-            return subprocess.run(
-                ["yt-dlp", "--ignore-config", *arguments],
-                text=True,
-                stdout=subprocess.PIPE,
-                stderr=subprocess.PIPE,
-                timeout=timeout,
-                check=True,
+        attempts = [arguments]
+        if "--extractor-args" not in arguments:
+            attempts.append(
+                [
+                    "--extractor-args",
+                    "youtube:player_client=default,web_embedded",
+                    *arguments,
+                ]
             )
-        except subprocess.TimeoutExpired as exc:
-            raise ValueError("The media provider took too long to respond") from exc
-        except subprocess.CalledProcessError as exc:
-            detail = (exc.stderr or exc.stdout or "Media extraction failed").strip().splitlines()[-1]
-            if "403" in detail or "forbidden" in detail.casefold():
-                raise ValueError(
-                    "YouTube refused audio access for this video. Try another upload or version of the song."
-                ) from exc
-            raise ValueError(detail[-240:]) from exc
+        last_error = None
+        for index, attempt in enumerate(attempts):
+            try:
+                return subprocess.run(
+                    ["yt-dlp", "--ignore-config", *attempt],
+                    text=True,
+                    stdout=subprocess.PIPE,
+                    stderr=subprocess.PIPE,
+                    timeout=timeout,
+                    check=True,
+                )
+            except subprocess.TimeoutExpired as exc:
+                raise ValueError("The media provider took too long to respond") from exc
+            except subprocess.CalledProcessError as exc:
+                last_error = exc
+                output = exc.stderr or exc.stdout or "Media extraction failed"
+                detail = output.strip().splitlines()[-1]
+                refused = "403" in output or "forbidden" in output.casefold()
+                if refused and index + 1 < len(attempts):
+                    continue
+                if refused:
+                    raise ValueError(
+                        "YouTube refused this video's audio after both normal and embedded-player attempts. "
+                        "Try another official upload or try again later."
+                    ) from exc
+                raise ValueError(detail[-240:]) from exc
+        raise ValueError("Media extraction failed") from last_error
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
         query = " ".join(query.split())[:200]
@@ -334,5 +355,6 @@ class ImportService:
             source_type="media_extractor",
             source_label=str(info.get("channel") or info.get("uploader") or "YouTube"),
             provider="YouTube",
+            artist=str(info.get("channel") or info.get("uploader") or "YouTube"),
             thumbnail_url=thumbnail,
         )

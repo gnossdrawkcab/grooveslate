@@ -440,6 +440,18 @@ class Processor:
         self._run(command)
         return destination, mix_id
 
+    def render_mp3(self, source: Path) -> Path:
+        """Render and cache a high-quality MP3 beside any generated FLAC mix."""
+        destination = source.with_suffix(".mp3")
+        if destination.is_file() and destination.stat().st_mtime >= source.stat().st_mtime:
+            return destination
+        self._run([
+            "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+            "-i", str(source), "-map", "0:a:0", "-c:a", "libmp3lame",
+            "-q:a", "2", str(destination),
+        ])
+        return destination
+
     def render_pitch_variant(
         self,
         job_id: str,
