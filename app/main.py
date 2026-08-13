@@ -13,7 +13,7 @@ import unicodedata
 from urllib.parse import parse_qs, quote
 
 from fastapi import FastAPI, File, Form, HTTPException, Query, Request, UploadFile
-from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse
+from fastapi.responses import FileResponse, HTMLResponse, JSONResponse, RedirectResponse, Response
 from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
@@ -21,7 +21,7 @@ from .config import Settings
 from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
 from .library import MusicLibrary
-from .practice import PracticeStore
+from .practice import PracticeStore, analyze_midi, midi_file, sanitize_midi_events
 
 
 class JobRequest(BaseModel):
@@ -106,7 +106,7 @@ def create_app(
         app.state.queue = JobQueue(processor) if start_worker else None
         yield
 
-    app = FastAPI(title="Drumless Compare", version="1.0.0", lifespan=lifespan)
+    app = FastAPI(title="GrooveSlate", version="2.0.0", lifespan=lifespan)
     app.state.settings = config
     app.state.library = library
     app.state.store = store
@@ -167,7 +167,7 @@ def create_app(
         return HTMLResponse(
             f"""<!doctype html>
 <html lang="en"><head><meta charset="utf-8"><meta name="viewport" content="width=device-width,initial-scale=1">
-<title>Drumless Compare · Sign in</title>
+<title>GrooveSlate · Sign in</title>
 <style>
 :root{{--paper:#0d0c0b;--panel:#171512;--ink:#f3efe7;--orange:#f05a2a;--muted:#9a9389;--line:#37332e;color-scheme:dark}}
 *{{box-sizing:border-box}} body{{margin:0;min-height:100vh;display:grid;place-items:center;background:var(--paper);color:var(--ink);font-family:Arial,sans-serif}}
@@ -177,7 +177,7 @@ p{{color:var(--muted);font-size:12px;line-height:1.5}} label{{display:block;marg
 input,select{{width:100%;height:48px;border:1px solid var(--line);background:var(--paper);color:var(--ink);padding:0 13px;font-size:16px}}
 button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange);color:white;font-weight:700;cursor:pointer}}
 .error{{color:#a22b1f}}
-</style></head><body><main><span class="eyebrow">PRIVATE LISTENING ROOM</span><h1>Drumless Compare</h1>
+</style></head><body><main><span class="eyebrow">YOUR DRUM PRACTICE ROOM</span><h1>GrooveSlate</h1>
 <p>Choose your practice library and enter the shared password.</p>{error_markup}
 <form method="post" action="/login"><input type="hidden" name="next" value="{safe_next}">
 <label for="username">WHO IS PRACTICING?</label><select id="username" name="username" required>{user_options}</select>
@@ -338,6 +338,10 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
                 **take,
                 "audio_url": f"/api/jobs/{job_id}/practice/takes/{take['id']}/audio",
                 "download_url": f"/api/jobs/{job_id}/practice/takes/{take['id']}/audio?download=true",
+                "midi_url": (f"/api/jobs/{job_id}/practice/takes/{take['id']}/midi"
+                             if take.get("midi_filename") else None),
+                "events_url": (f"/api/jobs/{job_id}/practice/takes/{take['id']}/events"
+                               if take.get("midi_filename") else None),
             }
             for take in data.get("takes", [])
         ]
@@ -451,6 +455,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         name: str = Form(default=""),
         notes: str = Form(default=""),
         duration: float = Form(default=0),
+        midi_events: str = Form(default="[]"),
     ) -> dict:
         try:
             owned_job(job_id, request.state.user)
@@ -468,6 +473,18 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         suffix = suffixes.get(mime_type)
         if suffix is None:
             raise HTTPException(status_code=400, detail="This recording format is not supported")
+        try:
+            events = sanitize_midi_events(json.loads(midi_events))
+        except (ValueError, TypeError, json.JSONDecodeError):
+            raise HTTPException(status_code=400, detail="MIDI capture is not valid") from None
+        take_duration = max(0, min(float(duration), 86_400))
+        session = practice.get(request.state.user, job_id)
+        analysis = analyze_midi(
+            events,
+            int(session["settings"].get("bpm", 120)),
+            session.get("markers", []),
+            take_duration,
+        ) if events else None
         take, destination = practice.create_take(
             request.state.user,
             job_id,
@@ -475,8 +492,10 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             {
                 "name": name.strip()[:80],
                 "notes": notes.strip()[:500],
-                "duration": max(0, min(float(duration), 86_400)),
+                "duration": take_duration,
                 "mime_type": mime_type,
+                "midi_events": events,
+                "analysis": analysis,
             },
         )
         temporary = destination.with_suffix(f"{destination.suffix}.part")
@@ -491,6 +510,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             if size < 256:
                 raise HTTPException(status_code=400, detail="The recording is empty")
             os.replace(temporary, destination)
+            practice.save_midi(request.state.user, job_id, take, events)
         finally:
             await file.close()
             if temporary.is_file():
@@ -536,6 +556,31 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             path,
             media_type=take["mime_type"],
             filename=f"{safe_title} - {safe_take}{path.suffix}",
+        )
+
+    @app.get("/api/jobs/{job_id}/practice/takes/{take_id}/events")
+    def get_practice_take_events(job_id: str, take_id: str, request: Request) -> dict:
+        try:
+            owned_job(job_id, request.state.user)
+            events, take = practice.midi_events(request.state.user, job_id, take_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="MIDI performance not found") from None
+        return {"take_id": take_id, "events": events, "analysis": take.get("analysis")}
+
+    @app.get("/api/jobs/{job_id}/practice/takes/{take_id}/midi")
+    def download_practice_take_midi(job_id: str, take_id: str, request: Request):
+        try:
+            job = owned_job(job_id, request.state.user)
+            events, take = practice.midi_events(request.state.user, job_id, take_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="MIDI performance not found") from None
+        bpm = int((take.get("analysis") or {}).get("bpm", 120))
+        safe_title = re.sub(r"[^A-Za-z0-9 ._-]+", "_", job["track"]["title"]).strip()
+        safe_take = re.sub(r"[^A-Za-z0-9 ._-]+", "_", take["name"]).strip()
+        return Response(
+            midi_file(events, bpm),
+            media_type="audio/midi",
+            headers={"Content-Disposition": f'attachment; filename="{safe_title} - {safe_take}.mid"'},
         )
 
     @app.get("/api/songs/{slug}")

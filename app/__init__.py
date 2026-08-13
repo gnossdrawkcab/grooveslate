@@ -1,2 +1,1 @@
-"""Drumless Compare application."""
-
+"""GrooveSlate drum practice studio."""

@@ -1,8 +1,9 @@
-# Drumless Compare
+# GrooveSlate
 
-Drumless Compare is a self-hosted web app for making drum-free practice tracks
-from a server-side music library, uploaded audio, or an imported direct audio
-URL. It runs the same song through:
+GrooveSlate is a self-hosted drum practice studio for making drum-free tracks,
+charting the song form, playing with a low-latency sampled e-kit, and capturing
+finished takes. Sources can come from a server-side music library, uploaded
+audio, or an imported direct audio URL. Separation uses:
 
 - SCNet XL IHF
 - BS-RoFormer-SW
@@ -59,9 +60,12 @@ module, and Web MIDI e-drums. The browser records the drumless backing and live
 drum signal into one take. MIDI uses a bundled, multi-layer FreePats acoustic kit
 with General MIDI mappings, velocity layers, round-robin alternates, and hi-hat
 choke. Samples decode into browser memory before playing to keep MIDI response
-immediate. Takes, notes, and the selected best
-take are saved under `${DATA_ROOT}/practice` and can only be accessed by their
-owner. See `app/static/drum-kit/LICENSE.md` for sample provenance.
+immediate. GrooveSlate also saves the raw, editable MIDI performance beside the
+audio, draws every hit against the full waveform and chart sections, reports
+grid consistency and dynamics by section, compares attempt scores, and exports
+standard MIDI for a DAW. Takes, notes, and the selected best take are saved
+under `${DATA_ROOT}/practice` and can only be accessed by their owner. See
+`app/static/drum-kit/LICENSE.md` for sample provenance.
 
 ## Importing audio
 

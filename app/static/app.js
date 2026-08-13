@@ -98,7 +98,7 @@ function renderHomePractice() {
     grid.innerHTML = `
       <div class="practice-empty">
         <span>♪</span>
-        <div><strong>No practice tracks yet</strong><p>Search for a song and Drumless will build your first play-along mix.</p></div>
+        <div><strong>No practice tracks yet</strong><p>Search for a song and GrooveSlate will build your first play-along mix.</p></div>
         <button type="button" id="empty-add-song">Add a song</button>
       </div>`;
     $("#empty-add-song").addEventListener("click", () => openStudio("import"));

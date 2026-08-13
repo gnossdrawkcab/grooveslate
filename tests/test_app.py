@@ -213,13 +213,25 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
 
         uploaded = client.post(
             f"/api/jobs/{job['id']}/practice/takes",
-            data={"name": "Take 1", "notes": "Strong ending", "duration": "123.4"},
+            data={
+                "name": "Take 1",
+                "notes": "Strong ending",
+                "duration": "123.4",
+                "midi_events": '[{"kind":"note","time_ms":100,"channel":9,"note":38,"velocity":112},{"kind":"cc","time_ms":120,"channel":9,"control":4,"value":40}]',
+            },
             files={"file": ("take.webm", b"recording" * 64, "audio/webm")},
         )
         assert uploaded.status_code == 201
         take = uploaded.json()["takes"][0]
         assert take["name"] == "Take 1"
+        assert take["analysis"]["hit_count"] == 1
+        assert take["analysis"]["pieces"] == {"snare": 1}
         assert client.get(take["audio_url"]).content == b"recording" * 64
+        assert client.get(take["events_url"]).json()["events"][0]["note"] == 38
+        midi = client.get(take["midi_url"])
+        assert midi.status_code == 200
+        assert midi.content.startswith(b"MThd")
+        assert b"MTrk" in midi.content
 
         marked = client.patch(
             f"/api/jobs/{job['id']}/practice/takes/{take['id']}",
@@ -237,6 +249,7 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         )
         assert client.get(f"/api/jobs/{job['id']}/practice").status_code == 404
         assert client.get(take["audio_url"]).status_code == 404
+        assert client.get(take["events_url"]).status_code == 404
 
 
 def test_unknown_track_is_not_exposed(tmp_path: Path):

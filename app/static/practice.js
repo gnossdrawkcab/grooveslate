@@ -22,6 +22,7 @@
     recorder: null,
     chunks: [],
     recordingStarted: 0,
+    midiEvents: [],
     recordingTimer: null,
     metronomeTimer: null,
     tapTimes: [],
@@ -216,13 +217,22 @@
       list.innerHTML = "<p>No takes yet. The first one does not need to be perfect.</p>";
       return;
     }
-    list.innerHTML = takes.map((take) => `
+    const scored = takes.filter((take) => Number.isFinite(take.analysis?.pocket_score));
+    const bestScore = scored.length ? Math.max(...scored.map((take) => take.analysis.pocket_score)) : null;
+    list.innerHTML = takes.map((take, index) => {
+      const analysis = take.analysis;
+      const previous = takes[index + 1]?.analysis?.pocket_score;
+      const delta = Number.isFinite(analysis?.pocket_score) && Number.isFinite(previous)
+        ? analysis.pocket_score - previous : null;
+      return `
       <article class="take-row">
         <button class="best-take ${take.best ? "active" : ""}" data-best-take="${take.id}" type="button" title="${take.best ? "Best take" : "Mark as best take"}">★</button>
-        <div class="take-copy"><strong>${app.escapeHtml(take.name)}</strong><small>${new Date(take.created_at).toLocaleString()}${take.notes ? ` · ${app.escapeHtml(take.notes)}` : ""}</small></div>
+        <div class="take-copy"><strong>${app.escapeHtml(take.name)}</strong><small>${new Date(take.created_at).toLocaleString()}${take.notes ? ` · ${app.escapeHtml(take.notes)}` : ""}</small>${analysis ? `<span class="take-score"><b>${analysis.pocket_score}</b> POCKET${delta === null ? "" : ` · ${delta >= 0 ? "+" : ""}${delta} VS PRIOR`}${analysis.pocket_score === bestScore ? " · TOP SCORE" : ""}</span>` : ""}</div>
         <audio controls preload="metadata" src="${app.escapeHtml(take.audio_url)}"></audio>
-        <div class="take-actions"><a href="${app.escapeHtml(take.download_url)}" title="Download take">↓</a><button data-delete-take="${take.id}" type="button" title="Delete take">×</button></div>
-      </article>`).join("");
+        <div class="take-actions">${take.midi_url ? `<a href="${app.escapeHtml(take.midi_url)}" title="Download editable MIDI">MIDI</a>` : ""}<a href="${app.escapeHtml(take.download_url)}" title="Download take">AUDIO</a><button data-delete-take="${take.id}" type="button" title="Delete take">×</button></div>
+        ${analysis ? `<details class="performance-detail"><summary>Performance map &amp; section analysis <span>${analysis.hit_count} hits · ${analysis.mean_offset_ms}ms mean grid offset</span></summary><canvas class="take-performance-map" data-take-map="${take.id}" tabindex="0" aria-label="Waveform-aligned MIDI hits"></canvas><div class="performance-stats"><span><b>${analysis.velocity.average ?? "—"}</b> AVG VELOCITY</span><span><b>${analysis.velocity.dynamic_range ?? "—"}</b> DYNAMIC RANGE</span><span><b>${analysis.hit_count}</b> MIDI HITS</span><span><b>${analysis.bpm}</b> ANALYSIS BPM</span></div><div class="section-scores">${analysis.sections.map((section) => `<span><b>${app.escapeHtml(section.label)}</b><i>${section.hits} hits</i><strong>${section.pocket_score ?? "—"}</strong></span>`).join("")}</div><p class="analysis-note">Pocket measures consistency against the nearest 1/16-note grid at your configured BPM. It does not judge musical choices.</p></details>` : ""}
+      </article>`;
+    }).join("");
     $$(".take-row audio", list).forEach((player) => player.addEventListener("play", () => {
       practiceState.audio?.pause();
       $$(".take-row audio", list).forEach((other) => { if (other !== player) other.pause(); });
@@ -236,6 +246,55 @@
         app.refreshPracticeLibrary();
       } catch (error) { app.toast(error.message); }
     }));
+    $$('[data-take-map]', list).forEach((canvas) => loadTakePerformance(canvas));
+  }
+
+  async function loadTakePerformance(canvas) {
+    const take = practiceState.session.takes.find((item) => item.id === canvas.dataset.takeMap);
+    if (!take?.events_url) return;
+    try {
+      if (!take._events) take._events = (await app.api(take.events_url)).events;
+      drawTakePerformance(canvas, take);
+      canvas.closest("details")?.addEventListener("toggle", (event) => {
+        if (event.currentTarget.open) window.requestAnimationFrame(() => drawTakePerformance(canvas, take));
+      });
+      canvas.addEventListener("click", (event) => {
+        const player = canvas.closest(".take-row").querySelector("audio");
+        const rect = canvas.getBoundingClientRect();
+        player.currentTime = Math.max(0, Math.min(take.duration, (event.clientX - rect.left) / rect.width * take.duration));
+      });
+    } catch { canvas.setAttribute("aria-label", "MIDI performance map unavailable"); }
+  }
+
+  function drawTakePerformance(canvas, take) {
+    const rect = canvas.getBoundingClientRect();
+    if (!rect.width) return;
+    const ratio = Math.min(2, window.devicePixelRatio || 1);
+    canvas.width = Math.round(rect.width * ratio); canvas.height = Math.round(112 * ratio);
+    const context = canvas.getContext("2d"); context.scale(ratio, ratio);
+    const width = rect.width; const height = 112;
+    context.fillStyle = "rgba(255,255,255,.025)"; context.fillRect(0, 0, width, height);
+    const peaks = practiceState.waveform?.peaks || [];
+    context.fillStyle = "rgba(255,255,255,.12)";
+    for (let x = 0; x < width && peaks.length; x += 2) {
+      const peak = peaks[Math.min(peaks.length - 1, Math.floor(x / width * peaks.length))];
+      context.fillRect(x, height / 2 - peak * 30, 1, Math.max(1, peak * 60));
+    }
+    const colors = { kick: "#f05a2a", snare: "#f7d154", "hi-hat": "#6dd6bd", tom: "#8ba7ff", crash: "#e68cff", ride: "#c3a5ff", other: "#a6a39f" };
+    const family = (note) => ([35,36].includes(note) ? "kick" : [31,34,37,38,39,40].includes(note) ? "snare" : [22,26,42,44,46].includes(note) ? "hi-hat" : [41,43,45,47,48,50].includes(note) ? "tom" : [49,52,55,57].includes(note) ? "crash" : [51,53,59].includes(note) ? "ride" : "other");
+    for (const marker of practiceState.session.markers || []) {
+      const x = marker.time / take.duration * width;
+      context.fillStyle = "rgba(240,90,42,.32)"; context.fillRect(x, 0, 1, height);
+      context.fillStyle = "rgba(255,255,255,.55)"; context.font = "9px DM Mono"; context.fillText(marker.label.toUpperCase(), Math.min(width - 55, x + 4), 11);
+    }
+    for (const event of take._events.filter((item) => item.kind === "note")) {
+      const x = event.time_ms / 1000 / take.duration * width;
+      const piece = family(event.note); const lane = { crash: 0, ride: 1, "hi-hat": 2, tom: 3, snare: 4, kick: 5, other: 3 }[piece];
+      const y = 22 + lane * 14;
+      context.fillStyle = colors[piece]; context.globalAlpha = .35 + event.velocity / 127 * .65;
+      context.fillRect(x, y, 2, 5 + event.velocity / 127 * 7);
+    }
+    context.globalAlpha = 1;
   }
 
   async function updateTake(takeId, update) {
@@ -266,8 +325,8 @@
       if ("mediaSession" in navigator) {
         navigator.mediaSession.metadata = new MediaMetadata({
           title: job.track.title,
-          artist: job.track.folder?.split("/")[0] || "Drumless practice",
-          album: "Drumless Practice Studio",
+          artist: job.track.folder?.split("/")[0] || "GrooveSlate practice",
+          album: "GrooveSlate Practice Studio",
         });
       }
     } catch (error) {
@@ -600,9 +659,13 @@
 
   function onMidiMessage(event) {
     const [status, note, velocity] = event.data;
-    if ((status & 0xf0) === 0xb0 && note === 4) practiceState.hiHatPedal = velocity;
+    if ((status & 0xf0) === 0xb0 && note === 4) {
+      practiceState.hiHatPedal = velocity;
+      captureMidi({ kind: "cc", control: note, value: velocity, channel: status & 0x0f });
+    }
     if ((status & 0xf0) === 0x90 && velocity > 0) {
       playDrum(note, velocity);
+      captureMidi({ kind: "note", note, velocity, channel: status & 0x0f });
       const definition = sampleForNote(note);
       window.requestAnimationFrame(() => {
         $("#midi-last-hit").textContent = `Last MIDI hit: ${definition?.[0] || "unmapped"} · note ${note} · velocity ${velocity}`;
@@ -610,10 +673,16 @@
     }
   }
 
+  function captureMidi(event) {
+    if (practiceState.recorder?.state !== "recording" || !practiceState.audio) return;
+    practiceState.midiEvents.push({ ...event, time_ms: Math.round(practiceState.audio.currentTime * 1000 * 100) / 100 });
+  }
+
   async function triggerPad(note, velocity = 108) {
     await ensureAudioContext();
     await ensureDrumSamples();
     playDrum(note, velocity);
+    captureMidi({ kind: "note", note, velocity, channel: 9 });
   }
 
   function supportedMimeType() {
@@ -641,6 +710,7 @@
       await runCountIn();
       const mimeType = supportedMimeType();
       practiceState.chunks = [];
+      practiceState.midiEvents = [];
       practiceState.recorder = new MediaRecorder(practiceState.mixDestination.stream, mimeType ? { mimeType, audioBitsPerSecond: 192000 } : undefined);
       practiceState.recorder.ondataavailable = (event) => { if (event.data.size) practiceState.chunks.push(event.data); };
       practiceState.recorder.onstop = uploadTake;
@@ -684,6 +754,7 @@
     form.append("name", $("#take-name").value.trim() || `Take ${(practiceState.session.takes?.length || 0) + 1}`);
     form.append("notes", $("#take-notes").value.trim());
     form.append("duration", String(duration));
+    form.append("midi_events", JSON.stringify(practiceState.midiEvents));
     try {
       practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice/takes`, { method: "POST", body: form });
       renderTakes();
@@ -697,6 +768,7 @@
     } finally {
       practiceState.recorder = null;
       practiceState.chunks = [];
+      practiceState.midiEvents = [];
       $("#record-take").disabled = false;
       $("#record-take").classList.remove("recording");
       $("#record-take span").textContent = "Record full take";
@@ -774,7 +846,7 @@
   if (!secureRecording) {
     $("#secure-recording-warning").classList.remove("hidden");
     ["#record-take", "#refresh-inputs", "#connect-midi"].forEach((selector) => { $(selector).disabled = true; });
-    $("#record-status").textContent = "Open Drumless over HTTPS to record";
+    $("#record-status").textContent = "Open GrooveSlate over HTTPS to record";
   }
 
   document.addEventListener("drumless:practice-job", (event) => loadPractice(event.detail));

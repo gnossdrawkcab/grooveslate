@@ -188,7 +188,7 @@ class ImportService:
         existing = self._existing(import_id)
         if existing:
             return existing
-        request = Request(url, headers={"User-Agent": "Drumless-Compare/1.1"})
+        request = Request(url, headers={"User-Agent": "GrooveSlate/2.0"})
         opener = build_opener(_SafeRedirects())
         destination_dir = self.root / import_id
         destination_dir.mkdir(parents=True, exist_ok=True)
