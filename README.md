@@ -67,6 +67,15 @@ standard MIDI for a DAW. Takes, notes, and the selected best take are saved
 under `${DATA_ROOT}/practice` and can only be accessed by their owner. See
 `app/static/drum-kit/LICENSE.md` for sample provenance.
 
+## Challenge mode
+
+Challenge Mode reads Navidrome's embedded genre tags and maps its detailed
+styles into 15 drummer-friendly lanes. Pick a genre, choose the full library or
+only prepared drumless tracks, and GrooveSlate draws a random song plus a
+measurable mission. Missions cover pocket score, dynamics, charting, one-take
+commitment, and improving a second take; progress follows the player into the
+song workbench.
+
 ## Importing audio
 
 The Import tab always accepts supported audio uploads and direct public audio

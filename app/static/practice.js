@@ -158,6 +158,7 @@
     if (!markers.length) {
       list.innerHTML = '<div class="empty-library">Play the track and tap a section button when the music changes.</div>';
       renderSongMap();
+      app.updateChallengeProgress?.(practiceState.session);
       return;
     }
     list.innerHTML = markers.map((marker) => `
@@ -174,6 +175,7 @@
       scheduleSave();
     }));
     renderSongMap();
+    app.updateChallengeProgress?.(practiceState.session);
   }
 
   function seekToMarker(id) {
@@ -215,6 +217,7 @@
     const list = $("#takes-list");
     if (!takes.length) {
       list.innerHTML = "<p>No takes yet. The first one does not need to be perfect.</p>";
+      app.updateChallengeProgress?.(practiceState.session);
       return;
     }
     const scored = takes.filter((take) => Number.isFinite(take.analysis?.pocket_score));
@@ -247,6 +250,7 @@
       } catch (error) { app.toast(error.message); }
     }));
     $$('[data-take-map]', list).forEach((canvas) => loadTakePerformance(canvas));
+    app.updateChallengeProgress?.(practiceState.session);
   }
 
   async function loadTakePerformance(canvas) {

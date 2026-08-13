@@ -18,6 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
+from .challenges import draw_challenge, draw_track, genre_options
 from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
 from .library import MusicLibrary
@@ -61,6 +62,11 @@ class TakeUpdate(BaseModel):
     name: str | None = Field(default=None, min_length=1, max_length=80)
     notes: str | None = Field(default=None, max_length=500)
     best: bool | None = None
+
+
+class ChallengeDraw(BaseModel):
+    genre: str = Field(min_length=1, max_length=40)
+    ready_only: bool = False
 
 
 def slugify_title(title: str) -> str:
@@ -330,6 +336,46 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         if not visible_to(job, user):
             raise KeyError(job_id)
         return job
+
+    def completed_jobs(user: str) -> dict[str, dict]:
+        completed: dict[str, dict] = {}
+        for job in store.list(10000):
+            track_id = job.get("track", {}).get("id")
+            if (
+                visible_to(job, user)
+                and job.get("status") == "complete"
+                and track_id
+                and any(job.get("models", {}).get(model, {}).get("status") == "complete" for model in ("roformer", "scnet"))
+            ):
+                completed.setdefault(track_id, job)
+        return completed
+
+    @app.get("/api/challenges/genres")
+    def get_challenge_genres(request: Request) -> dict:
+        tracks = library.scan()
+        ready_ids = set(completed_jobs(request.state.user))
+        return {
+            "genres": genre_options(tracks),
+            "ready_genres": genre_options(tracks, ready_ids),
+            "tagged_tracks": sum(bool(track.genres) for track in tracks),
+        }
+
+    @app.post("/api/challenges/draw")
+    def draw_song_challenge(payload: ChallengeDraw, request: Request) -> dict:
+        tracks = library.scan()
+        ready = completed_jobs(request.state.user)
+        try:
+            track = draw_track(tracks, payload.genre, set(ready) if payload.ready_only else None)
+        except KeyError:
+            raise HTTPException(status_code=400, detail="Choose a supported genre") from None
+        except LookupError:
+            raise HTTPException(status_code=404, detail="No eligible songs in that genre") from None
+        job = ready.get(track.id)
+        return {
+            "track": track.as_dict(),
+            "challenge": draw_challenge(),
+            "ready_job_id": job["id"] if job else None,
+        }
 
     def practice_response(user: str, job_id: str, session: dict | None = None) -> dict:
         data = session or practice.get(user, job_id)

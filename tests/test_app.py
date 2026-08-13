@@ -11,6 +11,7 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.config import Settings
+from app.challenges import draw_track, genre_options, track_genres
 from app.jobs import JobQueue, JobStore, Processor
 from app.imports import ImportService
 from app.library import MusicLibrary, Track
@@ -97,6 +98,19 @@ def test_library_can_refresh_instantly_from_navidrome_catalog(tmp_path: Path):
     library = MusicLibrary(root, max_tracks=0, catalog_path=catalog)
 
     assert [track.title for track in library.search("journey believin")] == ["Don't Stop Believin'"]
+
+
+def test_challenge_genres_use_navidrome_tags():
+    tracks = [
+        Track("1", "a", "Odd Meter", "Artist", "flac", 1, 0, genres=("Progressive Metal", "Djent")),
+        Track("2", "b", "Pocket", "Artist", "flac", 1, 0, genres=("Funk", "Soul")),
+    ]
+
+    assert track_genres(tracks[0]) >= {"metal", "progressive"}
+    counts = {item["id"]: item["count"] for item in genre_options(tracks)}
+    assert counts["funk"] == 1
+    assert counts["soul-rnb"] == 1
+    assert draw_track(tracks, "progressive").id == "1"
 
 
 def test_waveform_builds_display_peaks_and_caches_them(tmp_path: Path, monkeypatch):

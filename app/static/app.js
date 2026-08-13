@@ -11,6 +11,9 @@ const state = {
   pollTimer: null,
   clockTimer: null,
   stemsLoaded: new Set(),
+  challengeGenres: null,
+  challengeDraw: null,
+  activeChallenge: null,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -139,6 +142,105 @@ function renderHomePractice() {
   $$(".open-practice", grid).forEach((button) => {
     button.addEventListener("click", () => openPracticeSession(button.dataset.jobId));
   });
+}
+
+function renderActiveChallenge() {
+  const banner = $("#active-challenge");
+  const active = state.activeChallenge;
+  const matches = active && state.job?.track?.id === active.track.id;
+  banner.classList.toggle("hidden", !matches);
+  if (!matches) return;
+  $("#active-challenge-title").textContent = active.challenge.title;
+  $("#active-challenge-copy").textContent = active.challenge.instruction;
+}
+
+function updateChallengeProgress(session) {
+  const active = state.activeChallenge;
+  if (!active || state.job?.track?.id !== active.track.id) return;
+  const takes = session?.takes || [];
+  const markers = session?.markers || [];
+  const scores = takes.map((take) => take.analysis?.pocket_score).filter(Number.isFinite);
+  const ranges = takes.map((take) => take.analysis?.velocity?.dynamic_range).filter(Number.isFinite);
+  let progress = "Challenge in progress";
+  let complete = false;
+  if (active.challenge.kind === "pocket") {
+    complete = markers.length >= 4 && Math.max(-1, ...scores) >= active.challenge.target;
+    progress = `${Math.min(markers.length, 4)}/4 sections · best Pocket ${Math.max(0, ...scores)}/${active.challenge.target}`;
+  } else if (active.challenge.kind === "improve") {
+    complete = scores.length >= 2 && scores[0] > scores[1];
+    progress = `${Math.min(takes.length, 2)}/2 takes${scores.length >= 2 ? ` · ${scores[0] - scores[1] >= 0 ? "+" : ""}${scores[0] - scores[1]} Pocket` : ""}`;
+  } else if (active.challenge.kind === "dynamics") {
+    complete = Math.max(0, ...ranges) >= active.challenge.target;
+    progress = `Best dynamic range ${Math.max(0, ...ranges)}/${active.challenge.target}`;
+  } else if (active.challenge.kind === "one-take") {
+    complete = takes.length >= 1;
+    progress = `${Math.min(takes.length, 1)}/1 committed take`;
+  } else if (active.challenge.kind === "deep-chart") {
+    complete = markers.length >= active.challenge.target && takes.length >= 1;
+    progress = `${Math.min(markers.length, active.challenge.target)}/${active.challenge.target} markers · ${takes.length ? "take recorded" : "take needed"}`;
+  }
+  const label = $("#active-challenge-progress");
+  label.textContent = complete ? `✓ CHALLENGE COMPLETE · ${progress}` : progress;
+  label.classList.toggle("complete", complete);
+}
+
+async function loadChallengeGenres() {
+  if (!state.challengeGenres) state.challengeGenres = await api("/api/challenges/genres");
+  renderChallengeGenres();
+}
+
+function renderChallengeGenres() {
+  const readyOnly = $("#challenge-pool").value === "ready";
+  const genres = readyOnly ? state.challengeGenres?.ready_genres : state.challengeGenres?.genres;
+  const grid = $("#challenge-genres");
+  if (!genres) return;
+  grid.innerHTML = genres.map((genre) => `
+    <button type="button" data-challenge-genre="${genre.id}" ${genre.count ? "" : "disabled"}>
+      <span>${escapeHtml(genre.label)}</span><b>${genre.count.toLocaleString()}</b>
+    </button>`).join("");
+  $$('[data-challenge-genre]', grid).forEach((button) => button.addEventListener("click", () => drawChallenge(button.dataset.challengeGenre)));
+}
+
+async function drawChallenge(genre) {
+  $$('[data-challenge-genre]').forEach((button) => { button.disabled = true; });
+  try {
+    state.challengeDraw = await api("/api/challenges/draw", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ genre, ready_only: $("#challenge-pool").value === "ready" }),
+    });
+    state.challengeDraw.genre = genre;
+    const selected = state.challengeGenres.genres.find((item) => item.id === genre);
+    $("#challenge-genre").textContent = `${selected?.label || genre} · RANDOM DRAW`;
+    $("#challenge-song-title").textContent = state.challengeDraw.track.title;
+    $("#challenge-song-meta").textContent = `${state.challengeDraw.track.artist || "Unknown artist"} · ${state.challengeDraw.track.album || "Library"}${state.challengeDraw.ready_job_id ? " · READY NOW" : " · SEPARATION NEEDED"}`;
+    $("#challenge-kind").textContent = state.challengeDraw.challenge.kind.replaceAll("-", " ").toUpperCase();
+    $("#challenge-rule-title").textContent = state.challengeDraw.challenge.title;
+    $("#challenge-rule-copy").textContent = state.challengeDraw.challenge.instruction;
+    $("#challenge-card").classList.remove("hidden");
+    $("#redraw-challenge").dataset.genre = genre;
+  } catch (error) { toast(error.message); }
+  finally { renderChallengeGenres(); }
+}
+
+async function acceptChallenge() {
+  const draw = state.challengeDraw;
+  if (!draw) return;
+  state.activeChallenge = draw;
+  try { sessionStorage.setItem("grooveslate-challenge", JSON.stringify(draw)); } catch {}
+  renderActiveChallenge();
+  $("#challenge-drawer").classList.add("hidden");
+  if (draw.ready_job_id) {
+    await openPracticeSession(draw.ready_job_id);
+    toast("Challenge accepted — go earn it");
+    return;
+  }
+  state.selected = draw.track;
+  renderSelection();
+  document.body.classList.add("studio-open");
+  $("#studio").scrollIntoView({ behavior: "smooth", block: "start" });
+  await startJob();
+  toast("Challenge accepted — your drumless mix is being prepared");
 }
 
 async function openPracticeSession(jobId) {
@@ -329,6 +431,7 @@ async function startJob() {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ track_id: state.selected.id }),
     });
+    renderActiveChallenge();
     setJobUrl(state.job);
     updateJobView(state.job);
     pollJob(state.job.id);
@@ -790,6 +893,7 @@ function displayJob(job) {
   resetCards();
   state.job = job;
   state.selected = state.tracks.find((track) => track.id === job.track.id) || job.track;
+  renderActiveChallenge();
   renderSelection();
   if (state.browserMode === "completed") renderCompleted();
   else renderTracks();
@@ -901,6 +1005,19 @@ $("#audio-upload").addEventListener("change", (event) => uploadAudio(event.targe
 $("#share-button").addEventListener("click", () => copyText(window.location.href, "Share URL copied"));
 $("#sync-play").addEventListener("click", playTogether);
 $("#sync-stop").addEventListener("click", stopTogether);
+$("#open-challenge").addEventListener("click", async () => {
+  $("#challenge-drawer").classList.remove("hidden");
+  try { await loadChallengeGenres(); } catch (error) { toast(error.message); }
+  $("#challenge-drawer").scrollIntoView({ behavior: "smooth", block: "nearest" });
+});
+$("#close-challenge").addEventListener("click", () => $("#challenge-drawer").classList.add("hidden"));
+$("#challenge-pool").addEventListener("change", () => {
+  $("#challenge-card").classList.add("hidden");
+  state.challengeDraw = null;
+  renderChallengeGenres();
+});
+$("#redraw-challenge").addEventListener("click", (event) => drawChallenge(event.currentTarget.dataset.genre));
+$("#accept-challenge").addEventListener("click", acceptChallenge);
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {
     event.preventDefault();
@@ -926,6 +1043,8 @@ document.addEventListener("keydown", (event) => {
 
 $$(".model-card").forEach(setupPracticePlayer);
 applyTheme(document.documentElement.dataset.theme);
+try { state.activeChallenge = JSON.parse(sessionStorage.getItem("grooveslate-challenge") || "null"); } catch {}
+renderActiveChallenge();
 Promise.allSettled([
   loadSession(),
   loadLibrary(),
@@ -947,4 +1066,5 @@ window.DrumlessApp = {
   getJob: () => state.job,
   getPracticeAudio: () => $(".model-card[data-model=\"roformer\"] audio"),
   refreshPracticeLibrary: loadCompleted,
+  updateChallengeProgress,
 };

@@ -31,6 +31,9 @@ class Track:
     thumbnail_url: str = ""
     artist: str = ""
     album: str = ""
+    genres: tuple[str, ...] = ()
+    duration: float = 0
+    bpm: float = 0
 
     def as_dict(self) -> dict:
         return {
@@ -46,6 +49,9 @@ class Track:
             "thumbnail_url": self.thumbnail_url,
             "artist": self.artist,
             "album": self.album,
+            "genres": list(self.genres),
+            "duration": self.duration,
+            "bpm": self.bpm,
         }
 
 
@@ -91,9 +97,12 @@ class MusicLibrary:
             for track in tracks
         }
         self._rebuild_searchable()
-        # Serve the warm index immediately, then let the normal cache interval
-        # trigger a complete reconciliation with disk.
-        self._scanned_at = time.monotonic()
+        # Older warm indexes predate Navidrome's rich tag metadata. Rebuild one
+        # of those immediately so Challenge Mode never presents empty genres.
+        self._scanned_at = (
+            0.0 if self.catalog_path and tracks and not any(track.genres for track in tracks)
+            else time.monotonic()
+        )
 
     def _save_index(self) -> None:
         if not self.index_path:
@@ -142,10 +151,19 @@ class MusicLibrary:
                     f"file:{self.catalog_path}?mode=ro&immutable=1", uri=True
                 )
                 try:
+                    columns = {
+                        row[1] for row in connection.execute("PRAGMA table_info(media_file)")
+                    }
+                    optional = [
+                        name if name in columns else f"NULL AS {name}"
+                        for name in ("genre", "tags", "duration", "bpm")
+                    ]
                     rows = connection.execute(
-                        "SELECT path, title, size, suffix, artist, album FROM media_file WHERE missing = 0 ORDER BY path COLLATE NOCASE"
+                        "SELECT path, title, size, suffix, artist, album, "
+                        + ", ".join(optional)
+                        + " FROM media_file WHERE missing = 0 ORDER BY path COLLATE NOCASE"
                     )
-                    for relative, title, size, suffix, artist, album in rows:
+                    for relative, title, size, suffix, artist, album, genre, tags, duration, bpm in rows:
                         extension = f".{str(suffix).lower().lstrip('.')}"
                         if extension not in AUDIO_EXTENSIONS:
                             continue
@@ -153,6 +171,15 @@ class MusicLibrary:
                         if relative_path.is_absolute() or ".." in relative_path.parts:
                             continue
                         path = self.root / relative_path
+                        genres = []
+                        if genre:
+                            genres.append(str(genre))
+                        try:
+                            genres.extend(
+                                item.get("value", "") for item in json.loads(tags or "{}").get("genre", [])
+                            )
+                        except (TypeError, json.JSONDecodeError):
+                            pass
                         track = Track(
                             id=self._id(relative),
                             relative_path=relative,
@@ -163,6 +190,9 @@ class MusicLibrary:
                             modified=0,
                             artist=artist or "",
                             album=album or "",
+                            genres=tuple(dict.fromkeys(item for item in genres if item)),
+                            duration=float(duration or 0),
+                            bpm=float(bpm or 0),
                         )
                         tracks.append(track)
                         paths[track.id] = path
