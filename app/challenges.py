@@ -33,9 +33,43 @@ GENRE_LABELS = {
 }
 
 YOUTUBE_CHALLENGE_QUERIES = {
-    key: (f"{label} drum play along", f"{label} drumless backing track", f"{label} song official audio")
-    for key, label in GENRE_LABELS.items()
+    "rock": ("Queen Don't Stop Me Now official", "Foo Fighters Everlong official", "The Killers Mr Brightside official"),
+    "hard-rock": ("ACDC Back In Black official", "Guns N Roses Welcome To The Jungle official", "Van Halen Panama official"),
+    "metal": ("Metallica Enter Sandman official", "Iron Maiden The Trooper official", "Judas Priest Painkiller official"),
+    "punk": ("Ramones Blitzkrieg Bop official", "Green Day Basket Case official", "The Clash Should I Stay Or Should I Go official"),
+    "alternative": ("Nirvana Come As You Are official", "Radiohead Creep official", "Arctic Monkeys Do I Wanna Know official"),
+    "pop": ("Michael Jackson Billie Jean official", "Dua Lipa Levitating official", "The Weeknd Blinding Lights official"),
+    "funk": ("Prince Kiss official", "James Brown Get Up Offa That Thing official", "Vulfpeck Dean Town official"),
+    "soul-rnb": ("Stevie Wonder Superstition official", "Aretha Franklin Respect official", "Marvin Gaye What's Going On official"),
+    "jazz": ("Dave Brubeck Take Five official", "Herbie Hancock Chameleon official", "Miles Davis So What official"),
+    "blues": ("BB King The Thrill Is Gone official", "Stevie Ray Vaughan Pride And Joy official", "Muddy Waters Mannish Boy official"),
+    "country": ("Johnny Cash Folsom Prison Blues official", "Dolly Parton Jolene official", "Chris Stapleton Tennessee Whiskey official"),
+    "hip-hop": ("Outkast Ms Jackson official", "Nas NY State Of Mind official", "A Tribe Called Quest Scenario official"),
+    "electronic": ("Daft Punk Get Lucky official", "The Chemical Brothers Block Rockin Beats official", "Justice DANCE official"),
+    "reggae-ska": ("Bob Marley Could You Be Loved official", "Toots and the Maytals 54-46 official", "Sublime Santeria official"),
+    "progressive": ("Rush Tom Sawyer official", "Yes Roundabout official", "Tool Schism official"),
 }
+
+NON_ORIGINAL_RESULT_TERMS = (
+    "drumless",
+    "drums removed",
+    "without drums",
+    "backing track",
+    "play along",
+    "play-along",
+    "karaoke",
+    "minus drums",
+    "drum cover",
+    "drums only",
+    "isolated drums",
+    "with metal drums",
+    "playlist",
+    "full album",
+    "compilation",
+    "reaction",
+    "tutorial",
+    " cover",
+)
 
 CHALLENGES = (
     {"kind": "pocket", "title": "Pocket lock", "instruction": "Chart at least four sections, record a full take, and reach a Pocket score of 75.", "target": 75},
@@ -81,6 +115,11 @@ def youtube_challenge_query(genre: str) -> str:
         return choice(YOUTUBE_CHALLENGE_QUERIES[genre])
     except KeyError:
         raise KeyError(genre) from None
+
+
+def is_original_song_result(result: dict) -> bool:
+    title = str(result.get("title") or "").casefold()
+    return not any(term in title for term in NON_ORIGINAL_RESULT_TERMS)
 
 
 def draw_track(tracks: list[Track], genre: str, eligible_ids: set[str] | None = None) -> Track:

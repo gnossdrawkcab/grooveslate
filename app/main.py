@@ -19,7 +19,14 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
-from .challenges import draw_challenge, draw_track, genre_options, youtube_challenge_query, youtube_genre_options
+from .challenges import (
+    draw_challenge,
+    draw_track,
+    genre_options,
+    is_original_song_result,
+    youtube_challenge_query,
+    youtube_genre_options,
+)
 from .community import CommunityStore
 from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
@@ -461,13 +468,20 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             if payload.ready_only:
                 raise HTTPException(status_code=400, detail="Ready-only draws are unavailable in YouTube mode")
             try:
-                results = imports.search(youtube_challenge_query(payload.genre), 12)
+                results = [
+                    result
+                    for result in imports.search(youtube_challenge_query(payload.genre), 20)
+                    if is_original_song_result(result)
+                ]
             except KeyError:
                 raise HTTPException(status_code=400, detail="Choose a supported genre") from None
             except (ValueError, json.JSONDecodeError) as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from None
             if not results:
-                raise HTTPException(status_code=404, detail="YouTube returned no songs for that genre")
+                raise HTTPException(
+                    status_code=404,
+                    detail="YouTube returned no original-song results for that genre. Draw again.",
+                )
             selected = results[int.from_bytes(os.urandom(2), "big") % len(results)]
             return {
                 "track": {"id": selected.get("id", selected["url"]), "title": selected["title"], "artist": selected.get("channel", "YouTube"), "album": "YouTube challenge", "duration": selected.get("duration")},

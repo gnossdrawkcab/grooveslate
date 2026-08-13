@@ -11,7 +11,13 @@ from fastapi.testclient import TestClient
 import pytest
 
 from app.config import Settings
-from app.challenges import draw_track, genre_options, track_genres
+from app.challenges import (
+    draw_track,
+    genre_options,
+    is_original_song_result,
+    track_genres,
+    youtube_challenge_query,
+)
 from app.jobs import JobQueue, JobStore, Processor
 from app.imports import ImportService
 from app.library import MusicLibrary, Track
@@ -111,6 +117,16 @@ def test_challenge_genres_use_navidrome_tags():
     assert counts["funk"] == 1
     assert counts["soul-rnb"] == 1
     assert draw_track(tracks, "progressive").id == "1"
+
+
+def test_youtube_challenges_request_and_keep_original_songs():
+    query = youtube_challenge_query("rock")
+    assert "official" in query
+    assert is_original_song_result({"title": "Band - Real Song (Official Audio)"})
+    assert not is_original_song_result(
+        {"title": "Band - Real Song (Drumless Backing Track)"}
+    )
+    assert not is_original_song_result({"title": "Greatest Rock Songs Playlist"})
 
 
 def test_waveform_builds_display_peaks_and_caches_them(tmp_path: Path, monkeypatch):
