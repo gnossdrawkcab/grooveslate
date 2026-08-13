@@ -23,7 +23,9 @@ velocity and randomized layers for the acoustic kit used by Web MIDI.
 - Source: https://freepats.zenvoid.org/SoundSets/general-midi.html
 - Original archive: `FreePatsGM-Percussion-SFZ-20200822.tar.xz`
 - License: GNU GPL version 3 or later with the FreePats sound-output exception
-- Full license and individual sample provenance: included in the original archive
+- Full license: `FREEPATS-GPL.txt`
+- Sound-output exception: `FREEPATS-EXCEPTION.txt`
+- Individual sample provenance: included in the original archive linked above
 
 The exception permits compositions and recordings made with these sounds to be
 distributed without making the composition itself subject to the GPL.
