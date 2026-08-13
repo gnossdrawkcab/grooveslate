@@ -1,0 +1,35 @@
+services:
+  drumless-compare:
+    build:
+      context: .
+    container_name: drumless-compare
+    restart: unless-stopped
+    ports:
+      - "8097:8095"
+    env_file:
+      - path: ${APP_ENV_FILE:-./app.env}
+        required: false
+    environment:
+      MUSIC_ROOT: /music
+      DATA_ROOT: /data
+      MAX_SCAN_TRACKS: "0"
+      LIBRARY_CACHE_SECONDS: "300"
+      NAVIDROME_DB_PATH: ${NAVIDROME_DB_PATH:-}
+      JOB_TIMEOUT_SECONDS: "7200"
+      SCNET_ENABLED: "0"
+      BS_ROFORMER_ENABLED: "1"
+      MEDIA_EXTRACTOR_ENABLED: ${MEDIA_EXTRACTOR_ENABLED:-0}
+      MAX_IMPORT_BYTES: "262144000"
+      MAX_IMPORT_DURATION_SECONDS: "900"
+      APP_USERS: ${APP_USERS:-Pat,Bob}
+      APP_ADMIN_USERS: ${APP_ADMIN_USERS:-Pat}
+    volumes:
+      - ${MUSIC_PATH:-./music}:/music:ro
+      - ${DATA_PATH:-./data}:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

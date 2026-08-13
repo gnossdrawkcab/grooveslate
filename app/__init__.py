@@ -1,0 +1,2 @@
+"""Drumless Compare application."""
+

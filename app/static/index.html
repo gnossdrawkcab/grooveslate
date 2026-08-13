@@ -1,0 +1,311 @@
+<!doctype html>
+<html lang="en" data-theme="dark">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <meta name="theme-color" content="#11100f" />
+    <title>Drumless Studio</title>
+    <link rel="icon" type="image/svg+xml" href="/logo.svg" />
+    <script>
+      try {
+        document.documentElement.dataset.theme = localStorage.getItem("drumless-theme") === "light" ? "light" : "dark";
+      } catch { document.documentElement.dataset.theme = "dark"; }
+    </script>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-2" />
+  </head>
+  <body>
+    <div class="noise"></div>
+    <header class="topbar">
+      <a class="brand" href="/" aria-label="Drumless Compare home">
+        <img class="brand-logo" src="/logo.svg" alt="" width="34" height="34" />
+        <span>DRUMLESS / STUDIO</span>
+      </a>
+      <div class="topbar-actions">
+        <div class="system-state"><span class="status-dot"></span> ROFORMER PROCESSOR <strong id="gpu-state">READY</strong></div>
+        <a class="user-chip" id="current-user-chip" href="/logout" title="Switch user">…</a>
+        <a class="switch-user" href="/logout">Switch user</a>
+        <button class="theme-toggle" id="theme-toggle" type="button" aria-label="Switch to light mode" title="Switch theme">☀</button>
+      </div>
+    </header>
+
+    <main>
+      <section class="practice-home" id="practice-home">
+        <div class="home-command-bar">
+          <div>
+            <p class="eyebrow"><span id="current-user-name">YOUR</span> PRACTICE ROOM</p>
+            <h1>Practice library</h1>
+            <p>Play a drumless track now, or open its chart, loops, and takes.</p>
+          </div>
+          <div class="hero-actions">
+            <button class="resume-action" id="resume-latest" type="button" disabled><span>▶</span><b>Resume latest</b></button>
+            <button class="primary-action" data-home-action="import">＋ Add song</button>
+          </div>
+        </div>
+        <div class="sessions-section">
+          <div class="sessions-heading">
+            <div><span>READY TO PLAY</span><h2>Your songs</h2></div>
+            <p id="home-library-summary">Loading sessions…</p>
+          </div>
+          <form class="home-song-search" id="home-song-search">
+            <span>⌕</span>
+            <input id="home-song-search-input" type="search" placeholder="Find a song in your library or on YouTube" autocomplete="off" />
+            <button type="submit">Find &amp; prepare</button>
+          </form>
+          <div class="home-practice-browser" id="home-practice-grid" aria-live="polite">
+            <p class="practice-loading">Loading your practice sessions…</p>
+          </div>
+        </div>
+      </section>
+
+      <section class="workspace" id="studio">
+        <aside class="library-panel">
+          <div class="panel-heading">
+            <div>
+              <h2>Add or manage tracks</h2>
+            </div>
+            <button class="icon-button" id="refresh-button" title="Rescan library" aria-label="Rescan library">↻</button>
+          </div>
+          <div class="browser-tabs">
+            <button data-browser="library">Music library</button>
+            <button class="active" data-browser="completed">Ready to practice</button>
+            <button data-browser="import">Import</button>
+          </div>
+          <div class="import-panel hidden" id="import-panel">
+            <form id="provider-search-form">
+              <label class="search">
+                <span>⌕</span>
+              <input id="provider-search-input" type="search" placeholder="Search your library and YouTube" autocomplete="off" />
+              </label>
+              <button class="import-action" id="provider-search-button" type="submit">Search</button>
+            </form>
+            <div class="import-divider"><span>OR PASTE A LINK</span></div>
+            <form id="url-import-form">
+              <input id="url-import-input" type="url" placeholder="https://…/song.mp3 or YouTube URL" required />
+              <button class="import-action" type="submit">Import &amp; process</button>
+            </form>
+            <p class="import-notice">Only import media you’re permitted to use.</p>
+            <label class="upload-action">
+              <span>Upload an audio file</span>
+              <input id="audio-upload" type="file" accept="audio/*,.mp3,.flac,.wav,.m4a,.aac,.ogg,.opus" />
+            </label>
+            <p id="import-status">Uploads and direct audio links are ready.</p>
+          </div>
+          <div class="hidden" id="library-filters">
+            <label class="search">
+              <span>⌕</span>
+              <input id="search-input" type="search" placeholder="Search your library" autocomplete="off" />
+              <kbd>⌘K</kbd>
+            </label>
+            <div class="folder-row">
+              <select id="folder-select" aria-label="Filter by folder">
+                <option value="">All folders</option>
+              </select>
+              <span id="track-count">Scanning…</span>
+            </div>
+          </div>
+          <div class="completed-summary" id="completed-summary">Loading completed tracks…</div>
+          <div class="track-list" id="track-list" aria-live="polite"></div>
+        </aside>
+
+        <section class="compare-panel">
+          <div class="selected-track" id="selected-track">
+            <div class="record-art"><span></span></div>
+            <div class="track-copy">
+              <p>SELECTED SOURCE</p>
+              <h2 id="selected-title">Choose a track to begin</h2>
+              <span id="selected-path">Search, upload, or browse your private library.</span>
+            </div>
+            <div class="source-actions">
+              <button class="share-button" id="share-button" disabled>Copy share URL</button>
+              <button class="run-button" id="run-button" disabled>
+                <span>Run RoFormer</span>
+                <b>→</b>
+              </button>
+            </div>
+          </div>
+
+          <div class="job-progress hidden" id="job-progress">
+            <div>
+              <span id="job-stage">Preparing source audio</span>
+              <span class="job-clock"><i></i><b id="job-elapsed">0:00</b><strong id="job-percent">0%</strong></span>
+            </div>
+            <div class="progress-rail"><i id="progress-fill"></i></div>
+            <ol class="activity-log" id="activity-log"></ol>
+          </div>
+
+          <div class="comparison-heading">
+            <div>
+              <h2>Practice deck</h2>
+            </div>
+            <div class="sync-control">
+              <button id="sync-play" disabled>▶ Play together</button>
+              <button id="sync-stop" disabled>■ Stop</button>
+            </div>
+          </div>
+
+          <div class="model-grid">
+            <article class="model-card accent" data-model="roformer">
+              <div class="model-topline"><span>BS-ROFORMER-SW</span><span class="model-status">WAITING</span></div>
+              <h3>Play-along mix</h3>
+              <p class="model-description">Your selected stems, ready for focused practice.</p>
+              <div class="practice-player">
+                <button class="transport-play" aria-label="Play" disabled><span>▶</span></button>
+                <div class="timeline">
+                  <div class="time-row"><span class="current-time">0:00</span><span class="duration">0:00</span></div>
+                  <input class="scrubber" type="range" min="0" max="1000" value="0" aria-label="Song position" disabled />
+                </div>
+                <div class="practice-tools">
+                  <button class="seek-button" data-seek="-10" disabled>↶ 10s</button>
+                  <button class="seek-button" data-seek="10" disabled>10s ↷</button>
+                  <button class="loop-button" disabled>Set loop A</button>
+                  <label class="speed-control">SPEED
+                    <select class="speed-select" disabled>
+                      <option value="0.5">0.5×</option>
+                      <option value="0.75">0.75×</option>
+                      <option value="0.9">0.9×</option>
+                      <option value="1" selected>1×</option>
+                      <option value="1.1">1.1×</option>
+                      <option value="1.25">1.25×</option>
+                    </select>
+                  </label>
+                  <span class="keyboard-hint">SPACE play · ← → seek</span>
+                </div>
+                <audio preload="metadata"></audio>
+              </div>
+              <section class="session-studio hidden" id="session-studio">
+                <div class="session-heading">
+                  <div>
+                    <span>YOUR SONG WORKBENCH</span>
+                    <h4>Listen. Map it. Play it. Keep the take.</h4>
+                  </div>
+                  <strong id="session-save-state">SAVED</strong>
+                </div>
+                <div class="workbench-tabs" role="tablist" aria-label="Practice workflow">
+                  <button class="active" data-workbench="listen" type="button"><b>01</b> Listen</button>
+                  <button data-workbench="chart" type="button"><b>02</b> Chart</button>
+                  <button data-workbench="practice" type="button"><b>03</b> Practice</button>
+                  <button data-workbench="record" type="button"><b>04</b> Record</button>
+                </div>
+                <div class="song-map" id="song-map" aria-label="Song chart timeline">
+                  <canvas id="song-waveform" aria-hidden="true"></canvas>
+                  <div class="song-map-grid" aria-hidden="true"></div>
+                  <div class="song-map-markers" id="song-map-markers"></div>
+                  <div class="waveform-playhead" id="waveform-playhead" aria-hidden="true"></div>
+                  <div class="song-map-empty" id="song-map-empty">Loading full-song waveform…</div>
+                </div>
+
+                <div class="workbench-panel active" data-workbench-panel="listen">
+                  <div class="listen-grid">
+                    <div><span>ACTIVE LISTENING</span><strong>Hear the form before choosing the part.</strong><p>Listen for section lengths, dynamics, stops, pushes, and places where the band needs a clear cue.</p></div>
+                    <ol>
+                      <li><b>1</b> Find the pulse and song form</li>
+                      <li><b>2</b> Mark changes, hits, and trouble spots</li>
+                      <li><b>3</b> Build a part that supports the song</li>
+                    </ol>
+                  </div>
+                  <button class="workbench-next" data-next-workbench="chart" type="button">Start charting <span>→</span></button>
+                </div>
+
+                <div class="workbench-panel" data-workbench-panel="chart">
+                  <div class="marker-palette" aria-label="Quick marker types">
+                    <button data-marker-kind="intro" data-marker-label="Intro" type="button">Intro</button>
+                    <button data-marker-kind="verse" data-marker-label="Verse" type="button">Verse</button>
+                    <button data-marker-kind="chorus" data-marker-label="Chorus" type="button">Chorus</button>
+                    <button data-marker-kind="bridge" data-marker-label="Bridge" type="button">Bridge</button>
+                    <button data-marker-kind="fill" data-marker-label="Fill" type="button">Fill</button>
+                    <button data-marker-kind="hit" data-marker-label="Hit / Stop" type="button">Hit / Stop</button>
+                  </div>
+                  <form class="marker-form" id="marker-form">
+                    <div><label for="marker-label">MARKER</label><input id="marker-label" maxlength="40" placeholder="Verse 2" required /></div>
+                    <div><label for="marker-note">NOTE</label><input id="marker-note" maxlength="240" placeholder="Ride bell · build for four bars" /></div>
+                    <button type="submit">Add at <strong id="marker-playhead">0:00</strong></button>
+                  </form>
+                  <div class="marker-list" id="marker-list"></div>
+                </div>
+
+                <div class="workbench-panel" data-workbench-panel="practice">
+                  <div class="practice-settings-grid">
+                    <div class="setting-card tempo-card">
+                      <span>TEMPO</span>
+                      <div><input id="practice-bpm" type="number" min="30" max="300" value="120" /><b>BPM</b></div>
+                      <button id="tap-tempo" type="button">Tap tempo</button>
+                    </div>
+                    <label class="setting-card"><span>COUNT-IN</span><select id="count-in-bars"><option value="0">No count-in</option><option value="1">1 bar</option><option value="2" selected>2 bars</option><option value="4">4 bars</option></select></label>
+                    <label class="setting-card toggle-card"><span>METRONOME</span><input id="metronome-enabled" type="checkbox" /><i></i><small>Click while practicing</small></label>
+                    <label class="setting-card"><span>BACKING LEVEL</span><input id="backing-volume" type="range" min="0" max="1" step="0.05" value="0.8" /></label>
+                  </div>
+                  <div class="practice-launch">
+                    <div class="countdown-display" id="countdown-display"><span>READY</span><small>Use the A/B loop and speed controls above for difficult sections.</small></div>
+                    <button id="count-in-play" type="button">Count in &amp; play <span>▶</span></button>
+                  </div>
+                </div>
+
+                <div class="workbench-panel" data-workbench-panel="record">
+                  <div class="record-intro"><span>PERFORMANCE CAPTURE</span><h5>Record the backing and your drums as one finished take.</h5><p>Use headphones. Choose a phone mic, USB drum-module audio, MIDI e-kit, or both.</p></div>
+                  <p class="secure-recording-warning hidden" id="secure-recording-warning">Recording inputs require the secure HTTPS version of Drumless. Playback and charting still work here.</p>
+                  <div class="record-routing">
+                    <label><span>INPUT MODE</span><select id="record-mode"><option value="audio">Mic / USB drum audio</option><option value="midi">MIDI e-kit</option><option value="both">USB audio + MIDI</option></select></label>
+                    <label><span>AUDIO DEVICE</span><select id="audio-input-device"><option value="">Default input</option></select></label>
+                    <button id="refresh-inputs" type="button">Enable audio</button>
+                    <button id="connect-midi" type="button">Connect MIDI</button>
+                  </div>
+                  <div class="input-status-row"><span id="audio-input-status">Audio input not enabled</span><span id="midi-input-status">MIDI not connected</span></div>
+                  <div class="kit-pads" aria-label="Virtual drum kit">
+                    <button data-drum-note="49" type="button"><b>CRASH</b><span>49</span></button>
+                    <button data-drum-note="51" type="button"><b>RIDE</b><span>51</span></button>
+                    <button data-drum-note="48" type="button"><b>HI TOM</b><span>48</span></button>
+                    <button data-drum-note="45" type="button"><b>LOW TOM</b><span>45</span></button>
+                    <button data-drum-note="42" type="button"><b>HI-HAT</b><span>42</span></button>
+                    <button data-drum-note="38" type="button"><b>SNARE</b><span>38</span></button>
+                    <button data-drum-note="36" type="button"><b>KICK</b><span>36</span></button>
+                  </div>
+                  <div class="record-level"><i id="record-level-fill"></i></div>
+                  <div class="take-details">
+                    <input id="take-name" maxlength="80" placeholder="Take name (optional)" />
+                    <input id="take-notes" maxlength="500" placeholder="Notes: strong groove, check the bridge…" />
+                  </div>
+                  <div class="record-console">
+                    <button class="record-button" id="record-take" type="button"><i></i><span>Record full take</span></button>
+                    <div><strong id="record-clock">0:00</strong><span id="record-status">Ready when you are</span></div>
+                  </div>
+                  <div class="takes-heading"><span>SAVED TAKES</span><b id="takes-count">0</b></div>
+                  <div class="takes-list" id="takes-list"><p>No takes yet. The first one does not need to be perfect.</p></div>
+                </div>
+              </section>
+              <div class="live-phase">
+                <span class="phase-name">Waiting</span><b class="phase-percent">0%</b>
+                <div class="phase-rail"><i></i></div>
+                <small class="phase-detail">Queued until you run a comparison</small>
+              </div>
+              <div class="stem-mixer">
+                <span>PARTS YOU WILL PLAY · TAP TO REMOVE</span>
+                <div class="stem-buttons"><i>Available after separation</i></div>
+                <button class="build-mix" disabled>Rebuild selected mix</button>
+              </div>
+              <div class="model-meta">
+                <span class="model-time">— processing time</span>
+                <span><button class="copy-link" disabled>Copy link</button><a class="download disabled" href="#">Download FLAC ↓</a></span>
+              </div>
+            </article>
+          </div>
+
+          <div class="empty-note" id="empty-note">
+            <span>✦</span>
+            <p>Your RoFormer mix will appear here. Processing continues if you close this tab and automatically resumes after an app restart.</p>
+          </div>
+        </section>
+      </section>
+    </main>
+
+    <footer>
+      <span>LOSSLESS OUTPUT · READ-ONLY LIBRARY</span>
+      <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
+    </footer>
+    <div class="toast" id="toast" role="status"></div>
+    <script src="/app.js?v=20260813-2" defer></script>
+    <script src="/practice.js?v=20260813-2" defer></script>
+  </body>
+</html>

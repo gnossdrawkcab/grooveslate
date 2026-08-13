@@ -1,0 +1,15 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 48 48" role="img" aria-labelledby="title">
+  <title id="title">Drumless Compare</title>
+  <circle cx="24" cy="24" r="20" fill="#171512" stroke="#4a443d" stroke-width="1.5"/>
+  <circle cx="24" cy="24" r="14" fill="none" stroke="#2f2a25" stroke-width="1"/>
+  <path d="M8.8 18.2a17.7 17.7 0 0 1 30.4 0" fill="none" stroke="#f05a2a" stroke-width="3" stroke-linecap="round"/>
+  <path d="M10 29.8a17.7 17.7 0 0 0 28 2.8" fill="none" stroke="#f05a2a" stroke-width="3" stroke-linecap="round" opacity=".68"/>
+  <g fill="#f3efe7">
+    <rect x="14" y="21" width="2.5" height="6" rx="1.25"/>
+    <rect x="19" y="17" width="2.5" height="14" rx="1.25"/>
+    <rect x="24" y="12" width="2.5" height="24" rx="1.25" fill="#f05a2a"/>
+    <rect x="29" y="18.5" width="2.5" height="11" rx="1.25"/>
+    <rect x="34" y="21.5" width="2.5" height="5" rx="1.25"/>
+  </g>
+  <circle cx="24" cy="24" r="2.5" fill="#171512" stroke="#f3efe7" stroke-width="1"/>
+</svg>
