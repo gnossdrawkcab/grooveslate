@@ -1041,6 +1041,18 @@ function stopTogether() {
   });
 }
 
+function setLoopRange(start, end) {
+  const card = $(".model-card[data-model='roformer']");
+  const audio = $("audio", card);
+  const loop = $(".loop-button", card);
+  if (!audio || !(end > start)) return;
+  card._loopStart = start; card._loopEnd = end;
+  loop.disabled = false; loop.classList.add("active");
+  loop.textContent = `Loop ${formatTime(start)}–${formatTime(end)}`;
+  audio.currentTime = start;
+  audio.play().catch(() => {});
+}
+
 let searchTimer;
 $("#search-input").addEventListener("input", () => {
   window.clearTimeout(searchTimer);
@@ -1149,4 +1161,5 @@ window.DrumlessApp = {
   refreshPracticeLibrary: loadCompleted,
   refreshCommunity: loadCommunity,
   updateChallengeProgress,
+  setLoopRange,
 };

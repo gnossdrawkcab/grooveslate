@@ -109,6 +109,7 @@
     if (!practiceState.waveform) empty.textContent = "Loading full-song waveform…";
     drawWaveform();
     updateWaveformPlayhead();
+    updateCueStrip();
   }
 
   function drawWaveform() {
@@ -150,6 +151,39 @@
     const duration = practiceState.audio?.duration || practiceState.waveform?.duration;
     const percent = duration > 0 ? Math.max(0, Math.min(100, practiceState.audio.currentTime / duration * 100)) : 0;
     $("#waveform-playhead").style.left = `${percent}%`;
+  }
+
+  function updateCueStrip() {
+    const audio = practiceState.audio;
+    const markers = practiceState.session?.markers || [];
+    if (!audio || !markers.length) {
+      $("#cue-current-title").textContent = "Uncharted";
+      $("#cue-current-note").textContent = "Add or auto-map sections to follow the chart.";
+      $("#cue-bar-label").textContent = "BAR —";
+      $("#cue-section-progress").style.width = "0%";
+      $("#cue-next").disabled = true;
+      return;
+    }
+    let index = 0;
+    for (let candidate = 0; candidate < markers.length; candidate += 1) {
+      if (markers[candidate].time <= audio.currentTime + .08) index = candidate;
+      else break;
+    }
+    const current = markers[index];
+    const next = markers[index + 1];
+    const end = next?.time || audio.duration || current.time + 1;
+    const sectionRatio = Math.max(0, Math.min(1, (audio.currentTime - current.time) / Math.max(.1, end - current.time)));
+    const bpm = settings().bpm;
+    const baseBar = current.bar || Math.floor(current.time * bpm / 240) + 1;
+    const bar = baseBar + Math.max(0, Math.floor((audio.currentTime - current.time) * bpm / 240));
+    $("#cue-current-title").textContent = current.label;
+    $("#cue-current-note").textContent = current.note || current.kind;
+    $("#cue-bar-label").textContent = `BAR ${String(bar).padStart(3, "0")}${current.bars ? ` / ${baseBar + current.bars - 1}` : ""}`;
+    $("#cue-section-progress").style.width = `${sectionRatio * 100}%`;
+    $("#cue-next").disabled = !next;
+    $("#cue-next-title").textContent = next?.label || "End";
+    $("#cue-next-time").textContent = next ? `in ${app.formatTime(Math.max(0, next.time - audio.currentTime))}` : "—";
+    $("#cue-next").dataset.markerId = next?.id || "";
   }
 
   async function loadWaveform(jobId) {
@@ -194,15 +228,12 @@
         <span class="marker-kind"><b>${glyphs[marker.kind] || "•"}</b>${app.escapeHtml(marker.kind)}</span>
         <span class="marker-copy"><strong>${app.escapeHtml(marker.label)}${marker.bars ? ` <i>${marker.bars} BARS</i>` : ""}</strong>${marker.note ? `<small>${app.escapeHtml(marker.note)}</small>` : ""}</span>
         <span class="marker-dynamics ${app.escapeHtml(marker.dynamics || "")}">${marker.dynamics === "high" ? "ƒ" : marker.dynamics === "low" ? "p" : marker.dynamics ? "mf" : ""}</span>
-        <button class="delete-marker" type="button" data-delete-marker="${app.escapeHtml(marker.id)}" aria-label="Delete ${app.escapeHtml(marker.label)}">×</button>
+        <span class="marker-actions"><button type="button" data-loop-marker="${app.escapeHtml(marker.id)}" title="Loop this section">↻</button><button type="button" data-edit-marker="${app.escapeHtml(marker.id)}" title="Edit this chart item">✎</button></span>
       </div>`;
     }).join("");
     $$('[data-seek-marker]', list).forEach((button) => button.addEventListener("click", () => seekToMarker(button.dataset.seekMarker)));
-    $$('[data-delete-marker]', list).forEach((button) => button.addEventListener("click", () => {
-      practiceState.session.markers = practiceState.session.markers.filter((marker) => marker.id !== button.dataset.deleteMarker);
-      renderMarkers();
-      scheduleSave();
-    }));
+    $$('[data-edit-marker]', list).forEach((button) => button.addEventListener("click", () => openMarkerEditor(button.dataset.editMarker)));
+    $$('[data-loop-marker]', list).forEach((button) => button.addEventListener("click", () => loopMarker(button.dataset.loopMarker)));
     renderSongMap();
     app.updateChallengeProgress?.(practiceState.session);
   }
@@ -212,6 +243,76 @@
     if (!marker || !practiceState.audio) return;
     practiceState.audio.currentTime = marker.time;
     setPanel("listen");
+  }
+
+  function markerById(id) {
+    return practiceState.session?.markers.find((item) => item.id === id);
+  }
+
+  function loopMarker(id) {
+    const markers = practiceState.session?.markers || [];
+    const index = markers.findIndex((item) => item.id === id);
+    if (index < 0 || !practiceState.audio) return;
+    const start = markers[index].time;
+    const end = markers[index + 1]?.time || practiceState.audio.duration;
+    if (!(end > start)) return app.toast("This section needs a valid end point");
+    app.setLoopRange?.(start, end);
+    setPanel("practice");
+    app.toast(`Looping ${markers[index].label} · ${app.formatTime(start)}–${app.formatTime(end)}`);
+  }
+
+  function openMarkerEditor(id) {
+    const marker = markerById(id);
+    if (!marker) return;
+    $("#edit-marker-id").value = marker.id;
+    $("#edit-marker-label").value = marker.label;
+    $("#edit-marker-kind").value = marker.kind;
+    $("#edit-marker-time").value = marker.time;
+    $("#edit-marker-bar").value = marker.bar || "";
+    $("#edit-marker-bars").value = marker.bars || "";
+    $("#edit-marker-dynamics").value = marker.dynamics || "";
+    $("#edit-marker-note").value = marker.note || "";
+    $("#marker-editor").showModal();
+  }
+
+  function saveMarkerEdit(event) {
+    event.preventDefault();
+    const marker = markerById($("#edit-marker-id").value);
+    if (!marker) return;
+    marker.label = $("#edit-marker-label").value.trim();
+    marker.kind = $("#edit-marker-kind").value;
+    marker.time = Number($("#edit-marker-time").value);
+    marker.note = $("#edit-marker-note").value.trim();
+    marker.bar = Number($("#edit-marker-bar").value) || null;
+    marker.bars = Number($("#edit-marker-bars").value) || null;
+    marker.dynamics = $("#edit-marker-dynamics").value || null;
+    marker.confidence = 1;
+    practiceState.session.markers.sort((a, b) => a.time - b.time);
+    $("#marker-editor").close(); renderMarkers(); scheduleSave();
+    app.toast(`${marker.label} updated`);
+  }
+
+  function deleteEditedMarker() {
+    const id = $("#edit-marker-id").value;
+    const marker = markerById(id);
+    if (!marker || !window.confirm(`Delete ${marker.label} from this chart?`)) return;
+    practiceState.session.markers = practiceState.session.markers.filter((item) => item.id !== id);
+    $("#marker-editor").close(); renderMarkers(); scheduleSave();
+  }
+
+  function chartText() {
+    const title = practiceState.job?.track?.title || "GrooveSlate chart";
+    const header = `${title}\n${settings().bpm} BPM · 4/4\n`;
+    return header + (practiceState.session?.markers || []).map((marker) => {
+      const bar = marker.bar || Math.floor(marker.time * settings().bpm / 240) + 1;
+      return `BAR ${String(bar).padStart(3, "0")}  ${marker.label.toUpperCase()}${marker.bars ? ` · ${marker.bars} bars` : ""}${marker.note ? ` — ${marker.note}` : ""}`;
+    }).join("\n");
+  }
+
+  async function copyChart() {
+    const value = chartText();
+    try { await navigator.clipboard.writeText(value); app.toast("Drum chart copied"); }
+    catch { window.prompt("Copy drum chart:", value); }
   }
 
   function addMarker(label, kind, note = "") {
@@ -421,6 +522,7 @@
       }
       $$(".song-map-marker").forEach((button) => button.classList.toggle("active", button.dataset.markerId === active));
       updateWaveformPlayhead();
+      updateCueStrip();
     });
     audio.addEventListener("play", () => {
       requestWakeLock();
@@ -934,6 +1036,11 @@
   $$("[data-next-workbench]").forEach((button) => button.addEventListener("click", () => setPanel(button.dataset.nextWorkbench)));
   $$("[data-marker-kind]").forEach((button) => button.addEventListener("click", () => addMarker(button.dataset.markerLabel, button.dataset.markerKind, button.dataset.markerNote || "")));
   $("#auto-map-song").addEventListener("click", autoMapSong);
+  $("#copy-chart").addEventListener("click", copyChart);
+  $("#print-chart").addEventListener("click", () => window.print());
+  $("#marker-editor-form").addEventListener("submit", saveMarkerEdit);
+  $("#close-marker-editor").addEventListener("click", () => $("#marker-editor").close());
+  $("#editor-delete-marker").addEventListener("click", deleteEditedMarker);
   $("#marker-form").addEventListener("submit", (event) => {
     event.preventDefault();
     addMarker($("#marker-label").value, practiceState.markerKind, $("#marker-note").value);
@@ -1018,6 +1125,9 @@
     map.addEventListener("pointermove", move);
     map.addEventListener("pointerup", up);
     map.addEventListener("pointercancel", up);
+  });
+  $("#cue-next").addEventListener("click", (event) => {
+    if (event.currentTarget.dataset.markerId) seekToMarker(event.currentTarget.dataset.markerId);
   });
   let resizeTimer = null;
   window.addEventListener("resize", () => {

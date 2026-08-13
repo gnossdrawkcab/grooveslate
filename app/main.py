@@ -131,6 +131,7 @@ def create_app(
     app.state.store = store
     app.state.practice = practice
     app.state.community = community
+    app.state.song_mapper = song_mapper
     app.state.imports = imports
     failed_logins: dict[str, list[float]] = {}
     session_secret = config.session_secret or f"drumless:{config.app_password}"

@@ -286,6 +286,33 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         assert scored.json()["score_count"] == 1
 
 
+def test_auto_map_saves_an_editable_private_chart(tmp_path: Path, monkeypatch):
+    config = replace(settings(tmp_path), app_password="test-password", session_secret="secret")
+    source = config.music_root / "Artist" / "Mapped Song.flac"
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"audio")
+    app = create_app(config, start_worker=False)
+    track = app.state.library.scan()[0]
+    job = app.state.store.create(track, "Pat")
+    analysis = {
+        "bpm": 126, "time_signature": "4/4", "duration": 180, "beats": [0, .476, .952],
+        "method": "test", "markers": [{"id": "auto-0", "time": 0, "label": "Intro", "note": "8 bars", "kind": "intro", "bar": 1, "bars": 8, "confidence": .8, "dynamics": "low", "groove": "steady"}],
+    }
+    monkeypatch.setattr(app.state.song_mapper, "analyze", lambda _: analysis)
+
+    with TestClient(app) as client:
+        client.post("/login", data={"username": "Pat", "password": "test-password", "next": "/"})
+        mapped = client.post(f"/api/jobs/{job['id']}/practice/auto-map")
+        assert mapped.status_code == 200
+        assert mapped.json()["settings"]["bpm"] == 126
+        assert mapped.json()["markers"][0]["bars"] == 8
+        saved = client.get(f"/api/jobs/{job['id']}/practice").json()
+        assert saved["auto_map"]["method"] == "test"
+        client.get("/logout")
+        client.post("/login", data={"username": "Bob", "password": "test-password", "next": "/"})
+        assert client.post(f"/api/jobs/{job['id']}/practice/auto-map").status_code == 404
+
+
 def test_unknown_track_is_not_exposed(tmp_path: Path):
     config = settings(tmp_path)
     app = create_app(config, start_worker=False)

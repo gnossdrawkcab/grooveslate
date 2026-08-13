@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-10" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-12" />
   </head>
   <body>
     <div class="noise"></div>
@@ -223,6 +223,12 @@
                   <div class="waveform-playhead" id="waveform-playhead" aria-hidden="true"></div>
                   <div class="song-map-empty" id="song-map-empty">Loading full-song waveform…</div>
                 </div>
+                <div class="cue-strip" id="cue-strip">
+                  <span class="cue-now-label">NOW</span>
+                  <div class="cue-current"><strong id="cue-current-title">Uncharted</strong><small id="cue-current-note">Add or auto-map sections to follow the chart.</small></div>
+                  <div class="cue-bar"><span id="cue-bar-label">BAR —</span><i><b id="cue-section-progress"></b></i></div>
+                  <button id="cue-next" type="button" disabled><span>NEXT</span><strong id="cue-next-title">—</strong><small id="cue-next-time">—</small></button>
+                </div>
 
                 <div class="workbench-panel active" data-workbench-panel="listen">
                   <div class="listen-grid">
@@ -241,7 +247,7 @@
                     <div><span>DRUMMER’S ROAD MAP · 4/4</span><h5>Form, bars, cues, and orchestration</h5><p>Use rehearsal marks for the form and performance cues for what your hands and feet need to know.</p></div>
                     <button id="auto-map-song" type="button"><b>✦</b><span>Auto-map song</span><small>BEATS + FORM + ENERGY</small></button>
                   </div>
-                  <div class="chart-status" id="chart-status"><span><b id="chart-bpm">120</b> BPM</span><span><b id="chart-bars">—</b> BARS</span><span><b id="chart-sections">0</b> SECTIONS</span><em>Editable first draft</em></div>
+                  <div class="chart-status" id="chart-status"><span><b id="chart-bpm">120</b> BPM</span><span><b id="chart-bars">—</b> BARS</span><span><b id="chart-sections">0</b> SECTIONS</span><em>Editable first draft</em><button id="copy-chart" type="button">Copy notes</button><button id="print-chart" type="button">Print chart</button></div>
                   <div class="chart-palette-group"><span>REHEARSAL MARKS</span><div class="marker-palette" aria-label="Song sections">
                     <button data-marker-kind="intro" data-marker-label="Intro" data-marker-note="Count in · establish texture" type="button"><b>IN</b> Intro</button>
                     <button data-marker-kind="verse" data-marker-label="Verse" data-marker-note="Pocket · support the vocal" type="button"><b>V</b> Verse</button>
@@ -267,6 +273,22 @@
                     <button type="submit">Ink at <strong id="marker-playhead">0:00</strong></button>
                   </form>
                   <div class="marker-list" id="marker-list"></div>
+                  <dialog class="marker-editor" id="marker-editor">
+                    <form id="marker-editor-form">
+                      <div class="editor-heading"><div><span>EDIT ROAD MAP</span><h5>Section or performance cue</h5></div><button id="close-marker-editor" type="button" aria-label="Close">×</button></div>
+                      <input id="edit-marker-id" type="hidden" />
+                      <div class="editor-grid">
+                        <label><span>LABEL</span><input id="edit-marker-label" maxlength="40" required /></label>
+                        <label><span>TYPE</span><select id="edit-marker-kind"><option>intro</option><option>verse</option><option>prechorus</option><option>chorus</option><option>bridge</option><option>solo</option><option>outro</option><option>section</option><option>fill</option><option>hit</option><option>stop</option><option>push</option><option>ride</option><option>hat</option><option>halftime</option><option>build</option></select></label>
+                        <label><span>TIME</span><input id="edit-marker-time" type="number" min="0" max="86400" step="0.01" required /></label>
+                        <label><span>BAR</span><input id="edit-marker-bar" type="number" min="1" max="100000" /></label>
+                        <label><span>LENGTH · BARS</span><input id="edit-marker-bars" type="number" min="1" max="10000" /></label>
+                        <label><span>DYNAMICS</span><select id="edit-marker-dynamics"><option value="">—</option><option value="low">p · low</option><option value="medium">mf · medium</option><option value="high">ƒ · high</option></select></label>
+                        <label class="editor-notes"><span>DRUMMER’S SHORTHAND</span><input id="edit-marker-note" maxlength="240" placeholder="HH 8ths · x-stick · fill on 4&amp;" /></label>
+                      </div>
+                      <div class="editor-actions"><button id="editor-delete-marker" type="button">Delete cue</button><button type="submit">Save to chart</button></div>
+                    </form>
+                  </dialog>
                 </div>
 
                 <div class="workbench-panel" data-workbench-panel="practice">
@@ -358,7 +380,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-10" defer></script>
-    <script src="/practice.js?v=20260813-10" defer></script>
+    <script src="/app.js?v=20260813-12" defer></script>
+    <script src="/practice.js?v=20260813-12" defer></script>
   </body>
 </html>

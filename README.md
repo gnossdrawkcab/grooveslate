@@ -63,6 +63,11 @@ boundaries to detected beats, finds repeated A/B/C material, estimates bars and
 energy, and saves the result as a fully editable first draft. It does not claim
 to know whether ambiguous repeated material is a verse or chorus.
 
+Each chart item can be renamed, retimed, given a bar count and dynamics, or
+looped directly. Charts can be copied as rehearsal notes or printed without the
+surrounding UI. A live cue strip follows playback with the current section,
+drummer shorthand, bar progress, and next transition.
+
 Recording supports a phone or laptop microphone, a USB audio interface or drum
 module, and Web MIDI e-drums. The browser records the drumless backing and live
 drum signal into one take. MIDI uses a bundled, multi-layer FreePats acoustic kit
