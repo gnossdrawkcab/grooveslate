@@ -68,6 +68,7 @@ class MusicLibrary:
         self._tracks: list[Track] = []
         self._by_id: dict[str, Track] = {}
         self._paths: dict[str, Path] = {}
+        self._searchable: dict[str, str] = {}
         self._scanned_at = 0.0
         self._lock = Lock()
         self._load_index()
@@ -89,6 +90,7 @@ class MusicLibrary:
             track.id: Path(cached_paths.get(track.id, self.root / track.relative_path)).resolve()
             for track in tracks
         }
+        self._rebuild_searchable()
         # Serve the warm index immediately, then let the normal cache interval
         # trigger a complete reconciliation with disk.
         self._scanned_at = time.monotonic()
@@ -119,6 +121,14 @@ class MusicLibrary:
     def _search_text(value: str) -> str:
         decomposed = unicodedata.normalize("NFKD", value.casefold())
         return "".join(character for character in decomposed if not unicodedata.combining(character))
+
+    def _rebuild_searchable(self) -> None:
+        self._searchable = {
+            track.id: self._search_text(
+                f"{track.relative_path} {track.title} {track.artist} {track.album}"
+            )
+            for track in self._tracks
+        }
 
     def scan(self, force: bool = False) -> list[Track]:
         with self._lock:
@@ -213,6 +223,7 @@ class MusicLibrary:
             self._tracks = tracks
             self._by_id = {track.id: track for track in tracks}
             self._paths = paths
+            self._rebuild_searchable()
             self._scanned_at = time.monotonic()
             # A six-figure library produces a large cache file. Persist it off
             # the request path so a catalog refresh never freezes search.
@@ -226,12 +237,7 @@ class MusicLibrary:
         return [
             track
             for track in tracks
-            if all(
-                term in self._search_text(
-                    f"{track.relative_path} {track.title} {track.artist} {track.album}"
-                )
-                for term in query_terms
-            )
+            if all(term in self._searchable.get(track.id, "") for term in query_terms)
             and (
                 not normalized_folder
                 or track.folder == normalized_folder
