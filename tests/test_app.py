@@ -390,6 +390,7 @@ def test_frontend_and_health(tmp_path: Path):
         assert "Only import media you’re permitted to use." in homepage.text
         assert "rights-confirmed" not in homepage.text
         assert 'id="session-studio"' in homepage.text
+        assert 'id="global-progress"' in homepage.text
         assert client.get("/logo.svg").status_code == 200
         assert client.get("/manifest.webmanifest").status_code == 200
         assert client.get("/service-worker.js").status_code == 200
@@ -402,6 +403,9 @@ def test_frontend_and_health(tmp_path: Path):
         assert "if (songMatch)" in javascript
         assert "await replaceAudioSource" in javascript
         assert 'excluded.length === 1 && excluded[0] === "drums"' in javascript
+        assert "function beginActivity" in javascript
+        assert "Drawing a full-song challenge" in javascript
+        assert 'accept.textContent = "Preparing song…"' in javascript
         assert javascript.index("const local = await api(`/api/library") < javascript.index(
             "const remote = await api(`/api/imports/search"
         )

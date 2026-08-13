@@ -16,6 +16,7 @@ const state = {
   activeChallenge: null,
   community: [],
   youtubeResults: [],
+  jobActivity: null,
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -36,6 +37,61 @@ window.addEventListener("appinstalled", () => {
 });
 if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
 
+const globalActivities = new Map();
+let globalActivitySequence = 0;
+
+function renderGlobalActivity() {
+  const panel = $("#global-progress");
+  const current = [...globalActivities.values()].at(-1);
+  panel.classList.toggle("active", Boolean(current));
+  if (!current) {
+    panel.setAttribute("aria-valuetext", "Idle");
+    return;
+  }
+  const hasPercent = Number.isFinite(current.percent);
+  $("#global-progress-label").textContent = current.label;
+  $("#global-progress-percent").textContent = hasPercent ? `${Math.round(current.percent)}%` : "";
+  $("#global-progress-fill").style.width = hasPercent ? `${Math.max(2, current.percent)}%` : "32%";
+  panel.classList.toggle("indeterminate", !hasPercent);
+  panel.setAttribute("aria-valuenow", hasPercent ? String(Math.round(current.percent)) : "0");
+  panel.setAttribute("aria-valuetext", hasPercent ? `${current.label}, ${Math.round(current.percent)} percent` : `${current.label}, in progress`);
+}
+
+function beginActivity(label, percent = null) {
+  const token = `activity-${++globalActivitySequence}`;
+  globalActivities.set(token, { label, percent });
+  renderGlobalActivity();
+  return token;
+}
+
+function updateActivity(token, label, percent = null) {
+  if (!token || !globalActivities.has(token)) return;
+  globalActivities.set(token, { label, percent });
+  renderGlobalActivity();
+}
+
+function endActivity(token) {
+  if (!token) return;
+  globalActivities.delete(token);
+  renderGlobalActivity();
+}
+
+function apiActivity(path, options = {}) {
+  const method = (options.method || "GET").toUpperCase();
+  if (path.startsWith("/api/imports/search")) return "Searching YouTube…";
+  if (path === "/api/challenges/draw") return "Drawing a full-song challenge…";
+  if (path === "/api/imports/url") return "Downloading and preparing the song…";
+  if (path === "/api/imports/upload") return "Uploading source audio…";
+  if (path === "/api/jobs" && method === "POST") return "Queueing GPU separation…";
+  if (path.includes("/mix/") && method === "POST") return "Updating the stem mix…";
+  if (path.includes("/auto-map")) return "Analyzing beats, form, and energy…";
+  if (path.includes("/practice/takes") && method === "POST") return "Saving the recorded take…";
+  if (path.includes("/practice") && method === "PUT") return "Saving chart and practice settings…";
+  if (path.includes("/community") && method !== "GET") return "Updating Community Takes…";
+  if (["POST", "PUT", "DELETE"].includes(method)) return "Saving changes…";
+  return null;
+}
+
 function toast(message) {
   const element = $("#toast");
   element.textContent = message;
@@ -51,12 +107,18 @@ function formatBytes(bytes) {
 }
 
 async function api(path, options) {
-  const response = await fetch(path, options);
-  if (!response.ok) {
-    const body = await response.json().catch(() => ({}));
-    throw new Error(body.detail || `Request failed (${response.status})`);
+  const label = apiActivity(path, options);
+  const activity = label ? beginActivity(label) : null;
+  try {
+    const response = await fetch(path, options);
+    if (!response.ok) {
+      const body = await response.json().catch(() => ({}));
+      throw new Error(body.detail || `Request failed (${response.status})`);
+    }
+    return response.json();
+  } finally {
+    endActivity(activity);
   }
-  return response.json();
 }
 
 function renderTracks() {
@@ -317,25 +379,44 @@ async function drawChallenge(genre) {
 async function acceptChallenge() {
   const draw = state.challengeDraw;
   if (!draw) return;
-  state.activeChallenge = draw;
-  try { sessionStorage.setItem("grooveslate-challenge", JSON.stringify(draw)); } catch {}
-  renderActiveChallenge();
-  $("#challenge-drawer").classList.add("hidden");
   if (draw.ready_job_id) {
+    state.activeChallenge = draw;
+    try { sessionStorage.setItem("grooveslate-challenge", JSON.stringify(draw)); } catch {}
+    $("#challenge-drawer").classList.add("hidden");
     await openPracticeSession(draw.ready_job_id);
     toast("Challenge accepted — go earn it");
     return;
   }
   if (draw.youtube_url) {
-    const imported = await importURL(draw.youtube_url, draw.track.title);
-    if (imported) {
+    const accept = $("#accept-challenge");
+    const originalLabel = accept.textContent;
+    accept.disabled = true;
+    accept.textContent = "Preparing song…";
+    $("#redraw-challenge").disabled = true;
+    $("#challenge-song-meta").textContent = "DOWNLOADING FULL SONG · THEN REMOVING DRUMS";
+    try {
+      const imported = await importURL(draw.youtube_url, draw.track.title);
+      if (!imported) {
+        $("#challenge-song-meta").textContent = `${draw.track.artist || "YouTube"} · READY WHEN YOU ARE`;
+        return;
+      }
       draw.track = imported;
       state.activeChallenge = draw;
       try { sessionStorage.setItem("grooveslate-challenge", JSON.stringify(draw)); } catch {}
       renderActiveChallenge();
+      $("#challenge-drawer").classList.add("hidden");
+      toast("Challenge accepted — separation is underway");
+    } finally {
+      accept.disabled = false;
+      accept.textContent = originalLabel;
+      $("#redraw-challenge").disabled = false;
     }
     return;
   }
+  state.activeChallenge = draw;
+  try { sessionStorage.setItem("grooveslate-challenge", JSON.stringify(draw)); } catch {}
+  renderActiveChallenge();
+  $("#challenge-drawer").classList.add("hidden");
   state.selected = draw.track;
   renderSelection();
   document.body.classList.add("studio-open");
@@ -508,6 +589,8 @@ async function loadSession() {
 }
 
 function resetCards() {
+  endActivity(state.jobActivity);
+  state.jobActivity = null;
   document.dispatchEvent(new CustomEvent("drumless:clear-job"));
   $$(".model-card").forEach((card) => {
     card.classList.remove("ready");
@@ -665,6 +748,13 @@ async function uploadAudio(file) {
 
 function updateJobView(job) {
   state.job = job;
+  if (!["complete", "failed"].includes(job.status)) {
+    if (!state.jobActivity) state.jobActivity = beginActivity(job.stage || "Separating song…", job.progress || 0);
+    updateActivity(state.jobActivity, job.stage || "Separating song…", job.progress || 0);
+  } else {
+    endActivity(state.jobActivity);
+    state.jobActivity = null;
+  }
   $("#job-stage").textContent = job.stage;
   $("#job-percent").textContent = `${job.progress}%`;
   $("#progress-fill").style.width = `${job.progress}%`;
@@ -1213,11 +1303,14 @@ applyTheme(document.documentElement.dataset.theme);
 try { state.activeChallenge = JSON.parse(sessionStorage.getItem("grooveslate-challenge") || "null"); } catch {}
 renderActiveChallenge();
 async function boot() {
-  await loadSession();
-  await Promise.allSettled([
-    state.session?.source_mode === "youtube" ? Promise.resolve() : loadLibrary(),
-    loadCompleted(), loadCommunity(), loadImportCapabilities(), restoreRecentJob(),
-  ]);
+  const activity = beginActivity("Loading your practice room…");
+  try {
+    await loadSession();
+    await Promise.allSettled([
+      state.session?.source_mode === "youtube" ? Promise.resolve() : loadLibrary(),
+      loadCompleted(), loadCommunity(), loadImportCapabilities(), restoreRecentJob(),
+    ]);
+  } finally { endActivity(activity); }
 }
 boot();
 
@@ -1237,4 +1330,7 @@ window.DrumlessApp = {
   refreshCommunity: loadCommunity,
   updateChallengeProgress,
   setLoopRange,
+  beginActivity,
+  updateActivity,
+  endActivity,
 };

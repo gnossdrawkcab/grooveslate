@@ -72,6 +72,16 @@ body {
 .switch-user:hover { color: white; }
 .theme-toggle { width: 32px; height: 32px; border: 1px solid #37332e; border-radius: 50%; background: transparent; color: #d9d3c9; cursor: pointer; font-size: 13px; }
 .theme-toggle:hover { border-color: var(--orange); color: white; }
+.global-progress { position: fixed; top: 0; left: 0; right: 0; z-index: 80; min-height: 43px; padding: 8px 3.4vw 0; background: #11100f; color: #f3efe7; transform: translateY(-110%); opacity: 0; transition: transform .18s ease, opacity .18s ease; box-shadow: 0 8px 30px rgba(0,0,0,.28); }
+.global-progress.active { transform: translateY(0); opacity: 1; }
+.global-progress > div { height: 27px; display: flex; align-items: center; gap: 10px; font: 12px var(--mono); letter-spacing: .035em; }
+.global-progress > div b { margin-left: auto; color: var(--lime); font-size: 12px; }
+.global-progress-pulse { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--orange); box-shadow: 0 0 12px var(--orange); animation: activity-pulse .9s ease-in-out infinite alternate; }
+.global-progress-rail { position: absolute; left: 0; right: 0; bottom: 0; height: 5px; overflow: hidden; background: #302b26; }
+.global-progress-rail i { display: block; height: 100%; background: linear-gradient(90deg, var(--orange), #ff9a55); transition: width .28s ease; }
+.global-progress.indeterminate .global-progress-rail i { animation: activity-slide 1.05s ease-in-out infinite; }
+@keyframes activity-slide { from { transform: translateX(-115%); } to { transform: translateX(315%); } }
+@keyframes activity-pulse { from { opacity: .45; transform: scale(.8); } to { opacity: 1; transform: scale(1.18); } }
 main { padding: 0 3.4vw 60px; }
 .practice-home { padding: 0 0 56px; border-bottom: 1px solid var(--line); }
 .studio-hero { min-height: 610px; display: grid; grid-template-columns: minmax(0, 1.08fr) minmax(410px, .92fr); align-items: center; gap: clamp(50px, 7vw, 120px); padding: 70px 0; }
@@ -172,6 +182,7 @@ main { padding: 0 3.4vw 60px; }
 .challenge-card-actions { display: grid; gap: 6px; }
 .challenge-card-actions button { min-height: 36px; padding: 0 12px; border: 1px solid #37332e; background: transparent; color: #f3efe7; font-size: 8px; cursor: pointer; }
 .challenge-card-actions button:last-child { border-color: var(--orange); background: var(--orange); color: white; }
+.challenge-card-actions button:disabled { opacity: .58; cursor: wait; }
 .active-challenge { margin: 12px 0; padding: 11px 13px; border-left: 3px solid var(--lime); background: color-mix(in srgb, var(--lime) 8%, var(--paper)); }
 .active-challenge span { display: block; color: var(--lime); font: 7px var(--mono); letter-spacing: .1em; }
 .active-challenge strong { display: block; margin-top: 5px; font-size: 12px; }
