@@ -13,6 +13,8 @@ const state = {
   stemsLoaded: new Set(),
   challengeGenres: null,
   challengeDraw: null,
+  challengeHand: null,
+  challengeSeen: {},
   selectedChallengeGenre: null,
   activeChallenge: null,
   community: [],
@@ -363,6 +365,7 @@ function renderChallengeGenres() {
 function selectChallengeGenre(genre) {
   state.selectedChallengeGenre = genre;
   state.challengeDraw = null;
+  state.challengeHand = null;
   $("#challenge-card").classList.add("hidden");
   renderChallengeGenres();
 }
@@ -372,21 +375,50 @@ async function drawChallenge(genre) {
   renderChallengeGenres();
   $$('[data-challenge-genre]').forEach((button) => { button.disabled = true; });
   try {
-    state.challengeDraw = await api("/api/challenges/draw", {
+    state.challengeHand = await api("/api/challenges/draw", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ genre, ready_only: $("#challenge-pool").value === "ready" }),
+      body: JSON.stringify({
+        genre,
+        ready_only: $("#challenge-pool").value === "ready",
+        exclude: state.challengeSeen[genre] || [],
+      }),
     });
-    state.challengeDraw.genre = genre;
+    const seen = new Set(state.challengeSeen[genre] || []);
+    state.challengeHand.options.forEach((option) => {
+      if (option.shuffle_key) seen.add(option.shuffle_key);
+    });
+    state.challengeSeen[genre] = [...seen].slice(-200);
     const selected = state.challengeGenres.genres.find((item) => item.id === genre);
-    $("#challenge-genre").textContent = `${selected?.label || genre} · RANDOM DRAW`;
-    $("#challenge-song-title").textContent = state.challengeDraw.track.title;
-    $("#challenge-song-meta").textContent = `${state.challengeDraw.track.artist || "Unknown artist"} · ${state.challengeDraw.track.album || "Library"}${state.challengeDraw.ready_job_id ? " · READY NOW" : " · SEPARATION NEEDED"}`;
-    $("#challenge-kind").textContent = state.challengeDraw.challenge.kind.replaceAll("-", " ").toUpperCase();
-    $("#challenge-rule-title").textContent = state.challengeDraw.challenge.title;
-    $("#challenge-rule-copy").textContent = state.challengeDraw.challenge.instruction;
+    state.challengeDraw = null;
+    $("#challenge-genre").textContent = `${selected?.label || genre} · PICK 1 OF ${state.challengeHand.options.length}`;
+    $("#challenge-song-title").textContent = "Choose your song";
+    $("#challenge-song-meta").textContent = "Balanced studio picks · familiar, discovery, and deep cuts";
+    $("#challenge-kind").textContent = state.challengeHand.challenge.kind.replaceAll("-", " ").toUpperCase();
+    $("#challenge-rule-title").textContent = state.challengeHand.challenge.title;
+    $("#challenge-rule-copy").textContent = state.challengeHand.challenge.instruction;
+    $("#challenge-hand").innerHTML = state.challengeHand.options.map((option, index) => `
+      <button type="button" data-challenge-option="${index}">
+        <span>${escapeHtml(option.track.title)}</span>
+        <small>${escapeHtml(option.track.artist || "Unknown artist")} · ${(option.selection_lane || "library pick").replace("-", " ").toUpperCase()}${option.studio_only ? " · STUDIO" : ""}</small>
+        <b>CHOOSE</b>
+      </button>`).join("");
+    $$('[data-challenge-option]', $("#challenge-hand")).forEach((button) => button.addEventListener("click", () => {
+      const option = state.challengeHand.options[Number(button.dataset.challengeOption)];
+      state.challengeDraw = { ...option, challenge: state.challengeHand.challenge, genre };
+      $$('[data-challenge-option]', $("#challenge-hand")).forEach((item) => {
+        const active = item === button;
+        item.classList.toggle("active", active);
+        $("b", item).textContent = active ? "✓ SELECTED" : "CHOOSE";
+      });
+      $("#challenge-song-title").textContent = option.track.title;
+      $("#challenge-song-meta").textContent = `${option.track.artist || "Unknown artist"} · ${(option.selection_lane || "library pick").replace("-", " ").toUpperCase()}${option.studio_only ? " · STUDIO VERSION" : ""}`;
+      $("#accept-challenge").disabled = false;
+    }));
     $("#challenge-card").classList.remove("hidden");
     $("#redraw-challenge").dataset.genre = genre;
+    $("#redraw-challenge").textContent = "↻ Reroll 5";
+    $("#accept-challenge").disabled = true;
   } catch (error) { toast(error.message); }
   finally { renderChallengeGenres(); }
 }
@@ -586,7 +618,7 @@ async function loadSession() {
     if (state.session.source_mode === "youtube") {
       document.body.classList.add("youtube-only");
       $$('[data-library-only]').forEach((element) => element.classList.add("hidden"));
-      $("#challenge-source-copy").textContent = "Every draw searches YouTube in your chosen genre, then gives you a focused drumming mission.";
+      $("#challenge-source-copy").textContent = "Balanced between familiar songs, discoveries, and deep cuts in your chosen genre. Studio recordings only.";
       $("#challenge-pool").innerHTML = '<option value="all">YouTube song</option>';
       $("#home-song-search-input").placeholder = "Find a song on YouTube";
       $("#provider-search-input").placeholder = "Search YouTube";
@@ -856,12 +888,12 @@ async function loadStems(jobId, model, card) {
       });
     });
     const presetDefinitions = [
-      ["Full band", []],
-      ["Play drums", ["drums"]],
-      ["Play bass", ["bass"]],
-      ["Sing", ["vocals"]],
-      ["Play guitar", ["guitar"]],
-      ["Play keys", ["piano"]],
+      ["Full mix", []],
+      ["Remove drums", ["drums"]],
+      ["Remove bass", ["bass"]],
+      ["Remove vocals", ["vocals"]],
+      ["Remove guitar", ["guitar"]],
+      ["Remove keys", ["piano"]],
     ].filter(([, excluded]) => excluded.every((stem) => available.has(stem)));
     const presets = $(".mix-presets", card);
     presets.innerHTML = presetDefinitions.map(([label, excluded]) => `
@@ -1237,6 +1269,7 @@ function displayJob(job) {
   window.clearTimeout(state.pollTimer);
   resetCards();
   state.job = job;
+  document.body.classList.add("studio-open", "practice-active");
   state.selected = state.tracks.find((track) => track.id === job.track.id) || job.track;
   renderActiveChallenge();
   renderSelection();
@@ -1271,6 +1304,7 @@ async function restoreRecentJob() {
 }
 
 function openStudio(mode) {
+  document.body.classList.remove("practice-active");
   document.body.classList.add("studio-open");
   setBrowserMode(mode);
   $("#studio").scrollIntoView({ behavior: "smooth", block: "start" });
@@ -1287,6 +1321,7 @@ function chooseNewSong() {
   }
   $$('audio').forEach((audio) => audio.pause());
   document.body.classList.remove("studio-open");
+  document.body.classList.remove("practice-active");
   window.scrollTo({ top: 0, behavior: "smooth" });
   window.setTimeout(() => $("#home-song-search-input").focus(), 450);
 }

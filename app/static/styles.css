@@ -191,6 +191,13 @@ main { padding: 0 3.4vw 60px; }
 .challenge-card { display: grid; grid-template-columns: 44px 1fr 1.15fr auto; align-items: center; gap: 17px; margin-top: 18px; padding: 16px; border: 1px solid var(--line); background: var(--dark); color: #f3efe7; }
 .challenge-bolt { width: 42px; height: 42px; display: grid; place-items: center; border-radius: 50%; background: var(--lime); color: var(--dark); font-size: 20px; }
 .challenge-card h3 { margin: 5px 0 3px; font-size: 16px; }
+.challenge-hand { grid-column: 1 / -1; display: grid; gap: 6px; }
+.challenge-hand button { min-height: 50px; display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; gap: 3px 14px; padding: 8px 11px; border: 1px solid #37332e; background: transparent; color: #f3efe7; text-align: left; cursor: pointer; }
+.challenge-hand button span { overflow: hidden; font-weight: 700; text-overflow: ellipsis; white-space: nowrap; }
+.challenge-hand button small { grid-row: 2; color: #9a9389; font: 7px var(--mono); }
+.challenge-hand button b { grid-column: 2; grid-row: 1 / 3; color: var(--orange); font: 7px var(--mono); }
+.challenge-hand button:hover, .challenge-hand button.active { border-color: var(--lime); background: rgba(198,221,86,.08); }
+.challenge-hand button.active b { color: var(--lime); }
 .challenge-card p { margin: 3px 0 0; color: #9a9389; font-size: 8px; line-height: 1.45; }
 .challenge-rule { padding-left: 17px; border-left: 1px solid #37332e; }
 .challenge-rule strong { display: block; margin-top: 5px; font-size: 12px; }
@@ -258,10 +265,10 @@ main { padding: 0 3.4vw 60px; }
 .eyebrow { margin: 0 0 23px; font: 500 10px var(--mono); letter-spacing: .16em; color: var(--orange); }
 .primary-action { display: flex; align-items: center; gap: 35px; border: 0; background: var(--orange); color: white; }
 .workspace { display: grid; grid-template-columns: minmax(280px, .68fr) minmax(560px, 2fr); min-height: 670px; }
-.studio-open .workspace, .shared-song .workspace { display: block; }
-.studio-open .library-panel, .shared-song .library-panel { display: none; }
-.studio-open .compare-panel, .shared-song .compare-panel { max-width: 1120px; margin: 0 auto; padding-left: 0; }
-.studio-open .model-grid, .shared-song .model-grid { grid-template-columns: minmax(0, 1fr); }
+.practice-active .workspace, .shared-song .workspace { display: block; }
+.practice-active .library-panel, .shared-song .library-panel { display: none; }
+.practice-active .compare-panel, .shared-song .compare-panel { max-width: 1120px; margin: 0 auto; padding-left: 0; }
+.practice-active .model-grid, .shared-song .model-grid { grid-template-columns: minmax(0, 1fr); }
 .library-panel { padding: 34px 30px 0 0; border-right: 1px solid var(--line); }
 .compare-panel { padding: 34px 0 0 34px; }
 .panel-heading, .comparison-heading {
@@ -636,6 +643,7 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .mix-presets button { min-height: 38px; padding: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: 700 10px var(--sans); cursor: pointer; }
 .mix-presets button:hover { border-color: var(--orange); }
 .mix-presets button.active { border-color: var(--orange); background: var(--orange); color: white; }
+.mix-presets button.active:not([data-mix-preset=""]) { text-decoration: line-through 2px; text-decoration-color: currentColor; }
 .custom-mixer { margin-top: 10px; border-top: 1px solid var(--line); }
 .custom-mixer summary { min-height: 38px; display: flex; align-items: center; justify-content: space-between; color: var(--muted); font: 700 8px var(--sans); cursor: pointer; list-style: none; }
 .custom-mixer summary::-webkit-details-marker { display: none; }

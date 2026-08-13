@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from contextlib import asynccontextmanager
+from concurrent.futures import ThreadPoolExecutor
 import hashlib
 import hmac
 import html
@@ -21,10 +22,11 @@ from pydantic import BaseModel, Field
 from .config import Settings
 from .challenges import (
     draw_challenge,
-    draw_track,
+    draw_tracks,
+    challenge_song_key,
     genre_options,
     is_original_song_result,
-    youtube_challenge_query,
+    youtube_challenge_hand,
     youtube_genre_options,
 )
 from .community import CommunityStore
@@ -89,6 +91,7 @@ class TakeUpdate(BaseModel):
 class ChallengeDraw(BaseModel):
     genre: str = Field(min_length=1, max_length=40)
     ready_only: bool = False
+    exclude: list[str] = Field(default_factory=list, max_length=200)
 
 
 class CommunityScore(BaseModel):
@@ -474,41 +477,68 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             if payload.ready_only:
                 raise HTTPException(status_code=400, detail="Ready-only draws are unavailable in YouTube mode")
             try:
-                results = [
-                    result
-                    for result in imports.search(youtube_challenge_query(payload.genre), 20)
-                    if is_original_song_result(result)
-                ]
+                hand = youtube_challenge_hand(payload.genre, set(payload.exclude))
+                options = []
+                seen = {value[:140] for value in payload.exclude}
+                seen_videos = set()
+                with ThreadPoolExecutor(max_workers=5) as executor:
+                    result_sets = list(executor.map(
+                        lambda seed: imports.search(seed["query"], 8), hand
+                    ))
+                for seed, search_results in zip(hand, result_sets):
+                    key = challenge_song_key({"title": seed["query"]})
+                    selected = None
+                    for candidate in search_results:
+                        video_key = candidate.get("id", candidate["url"])
+                        if is_original_song_result(candidate) and video_key not in seen_videos:
+                            selected = candidate
+                            break
+                    if selected and key not in seen:
+                        video_key = selected.get("id", selected["url"])
+                        seen.add(key)
+                        seen_videos.add(video_key)
+                        options.append({
+                            "track": {"id": video_key, "title": selected["title"], "artist": selected.get("channel", "YouTube"), "album": "YouTube challenge", "duration": selected.get("duration")},
+                            "youtube_url": selected["url"], "ready_job_id": None,
+                            "selection_lane": seed["lane"], "studio_only": True,
+                            "shuffle_key": key,
+                        })
             except KeyError:
                 raise HTTPException(status_code=400, detail="Choose a supported genre") from None
             except (ValueError, json.JSONDecodeError) as exc:
                 raise HTTPException(status_code=400, detail=str(exc)) from None
-            if not results:
+            if not options:
                 raise HTTPException(
                     status_code=404,
                     detail="YouTube returned no original-song results for that genre. Draw again.",
                 )
-            selected = results[int.from_bytes(os.urandom(2), "big") % len(results)]
             return {
-                "track": {"id": selected.get("id", selected["url"]), "title": selected["title"], "artist": selected.get("channel", "YouTube"), "album": "YouTube challenge", "duration": selected.get("duration")},
-                "youtube_url": selected["url"],
                 "challenge": draw_challenge(),
-                "ready_job_id": None,
+                "options": options,
+                **options[0],
             }
         tracks = library.scan()
         ready = completed_jobs(request.state.user)
         try:
-            track = draw_track(tracks, payload.genre, set(ready) if payload.ready_only else None)
+            drawn_tracks = draw_tracks(
+                tracks, payload.genre, set(ready) if payload.ready_only else None,
+                excluded_ids=set(payload.exclude),
+            )
         except KeyError:
             raise HTTPException(status_code=400, detail="Choose a supported genre") from None
         except LookupError:
-            raise HTTPException(status_code=404, detail="No eligible songs in that genre") from None
-        job = ready.get(track.id)
-        return {
-            "track": track.as_dict(),
-            "challenge": draw_challenge(),
-            "ready_job_id": job["id"] if job else None,
-        }
+            if payload.exclude:
+                drawn_tracks = draw_tracks(
+                    tracks, payload.genre,
+                    set(ready) if payload.ready_only else None,
+                )
+            else:
+                raise HTTPException(status_code=404, detail="No eligible songs in that genre") from None
+        options = []
+        for track in drawn_tracks:
+            job = ready.get(track.id)
+            options.append({"track": track.as_dict(), "ready_job_id": job["id"] if job else None, "shuffle_key": track.id})
+        return {"options": options, "challenge": draw_challenge(), **options[0]}
 
     def practice_response(user: str, job_id: str, session: dict | None = None) -> dict:
         data = session or practice.get(user, job_id)

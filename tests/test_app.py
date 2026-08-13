@@ -127,6 +127,9 @@ def test_youtube_challenges_request_and_keep_original_songs():
         {"title": "Band - Real Song (Drumless Backing Track)"}
     )
     assert not is_original_song_result({"title": "Greatest Rock Songs Playlist"})
+    assert not is_original_song_result({"title": "Great Song (Live at Wembley)"})
+    assert not is_original_song_result({"title": "Great Song Acoustic Performance"})
+    assert not is_original_song_result({"title": "Great Song Remix"})
 
 
 def test_waveform_builds_display_peaks_and_caches_them(tmp_path: Path, monkeypatch):
@@ -263,6 +266,9 @@ def test_youtube_challenge_draws_from_search(tmp_path: Path, monkeypatch):
         draw = client.post("/api/challenges/draw", json={"genre": "funk"}).json()
         assert draw["youtube_url"] == "https://youtu.be/video"
         assert draw["track"]["artist"] == "Band"
+        assert len(draw["options"]) == 1  # duplicate mocked video is deduplicated
+        assert draw["selection_lane"] in {"familiar", "discovery", "deep-cut"}
+        assert draw["studio_only"] is True
 
 
 def test_public_youtube_mode_rate_limits_gpu_jobs(tmp_path: Path):
@@ -444,7 +450,7 @@ def test_frontend_and_health(tmp_path: Path):
         assert "function selectChallengeGenre" in javascript
         assert 'id="draw-selected-genre"' in homepage.text
         assert 'accept.textContent = "Preparing song…"' in javascript
-        assert '["Play bass", ["bass"]]' in javascript
+        assert '["Remove bass", ["bass"]]' in javascript
         assert "function applyPitch" in javascript
         assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
         assert "Capture at the actual swap" in javascript

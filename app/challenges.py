@@ -1,7 +1,8 @@
 from __future__ import annotations
 
 from collections import Counter
-from secrets import choice
+import re
+from secrets import choice, randbelow
 
 from .library import Track
 
@@ -50,6 +51,62 @@ YOUTUBE_CHALLENGE_QUERIES = {
     "progressive": ("Rush Tom Sawyer official", "Yes Roundabout official", "Tool Schism official"),
 }
 
+# The familiar pool gives new players an approachable foothold; discovery and
+# deep-cut pools prevent roulette from becoming the same greatest-hits list.
+YOUTUBE_DISCOVERY_QUERIES = {
+    "rock": ("The War on Drugs Red Eyes official audio", "Big Star September Gurls official audio", "Television See No Evil official audio"),
+    "hard-rock": ("Thin Lizzy Emerald official audio", "UFO Rock Bottom official audio", "Living Colour Cult of Personality official audio"),
+    "metal": ("Mastodon Blood and Thunder official audio", "Opeth Ghost of Perdition official audio", "Gojira Stranded official audio"),
+    "punk": ("Bad Brains Banned in DC official audio", "Fugazi Waiting Room official audio", "Buzzcocks Ever Fallen in Love official audio"),
+    "alternative": ("Dinosaur Jr Feel the Pain official audio", "Sonic Youth Kool Thing official audio", "Built to Spill Carry the Zero official audio"),
+    "pop": ("Robyn Dancing On My Own official audio", "Carly Rae Jepsen Run Away With Me official audio", "HAIM The Wire official audio"),
+    "funk": ("The Meters Cissy Strut official audio", "Parliament Flash Light official audio", "Lettuce Phyllis official audio"),
+    "soul-rnb": ("D'Angelo Chicken Grease official audio", "Erykah Badu On and On official audio", "Donny Hathaway The Ghetto official audio"),
+    "jazz": ("Billy Cobham Stratus official audio", "Weather Report Teen Town official audio", "Art Blakey Moanin official audio"),
+    "blues": ("Albert King Born Under a Bad Sign official audio", "Freddie King Going Down official audio", "Gary Clark Jr Bright Lights official audio"),
+    "country": ("Jason Isbell Cover Me Up official audio", "Sturgill Simpson Turtles All the Way Down official audio", "Emmylou Harris Luxury Liner official audio"),
+    "hip-hop": ("The Roots The Seed 2.0 official audio", "De La Soul Stakes Is High official audio", "Gang Starr Mass Appeal official audio"),
+    "electronic": ("Caribou Odessa official audio", "LCD Soundsystem Tribulations official audio", "Underworld Born Slippy official audio"),
+    "reggae-ska": ("The Skatalites Guns of Navarone official audio", "Burning Spear Marcus Garvey official audio", "The Specials Ghost Town official audio"),
+    "progressive": ("King Crimson Red official audio", "Porcupine Tree Blackest Eyes official audio", "Gentle Giant Proclamation official audio"),
+}
+
+YOUTUBE_DEEP_CUT_QUERIES = {
+    "rock": ("Failure Stuck on You official audio", "Hum Stars official audio"),
+    "hard-rock": ("Budgie Breadfan official audio", "Riot Swords and Tequila official audio"),
+    "metal": ("Cynic Veil of Maya official audio", "Voivod Tribal Convictions official audio"),
+    "punk": ("Drive Like Jehu Here Come the Rome Plows official audio", "Jawbreaker Boxcar official audio"),
+    "alternative": ("Polvo Fast Canoe official audio", "The Dismemberment Plan The City official audio"),
+    "pop": ("Jessie Ware Spotlight official audio", "Rina Sawayama XS official audio"),
+    "funk": ("Mandrill Fencewalk official audio", "Cymande Bra official audio"),
+    "soul-rnb": ("Shuggie Otis Strawberry Letter 23 official audio", "Betty Davis If I'm in Luck official audio"),
+    "jazz": ("Tony Williams Fred official audio", "Mahavishnu Orchestra Vital Transformation official audio"),
+    "blues": ("Junior Kimbrough Meet Me in the City official audio", "R L Burnside Goin Down South official audio"),
+    "country": ("Lucinda Williams Joy official audio", "James McMurtry Choctaw Bingo official audio"),
+    "hip-hop": ("Blackalicious Make You Feel That Way official audio", "Digable Planets 9th Wonder official audio"),
+    "electronic": ("Autechre Bike official audio", "Floating Points Nuits Sonores official audio"),
+    "reggae-ska": ("The Congos Fisherman official audio", "Augustus Pablo East of the River Nile official audio"),
+    "progressive": ("Van der Graaf Generator Killer official audio", "Camel Lunar Sea official audio"),
+}
+
+YOUTUBE_EXTRA_QUERIES = {
+    "rock": ("Spoon The Underdog official audio", "Wilco Heavy Metal Drummer official audio", "The Afghan Whigs Debonair official audio", "Queens of the Stone Age No One Knows official audio", "The Raconteurs Steady As She Goes official audio"),
+    "hard-rock": ("Rival Sons Pressure and Time official audio", "The Cult Fire Woman official audio", "Clutch Electric Worry official audio", "Rainbow Stargazer official audio", "Deep Purple Burn official audio"),
+    "metal": ("Meshuggah Bleed official audio", "Killswitch Engage My Curse official audio", "Baroness Take My Bones Away official audio", "High on Fire Snakes for the Divine official audio", "Death Symbolic official audio"),
+    "punk": ("Refused New Noise official audio", "IDLES Never Fight a Man with a Perm official audio", "Turnstile Mystery official audio", "Rancid Time Bomb official audio", "At the Drive In One Armed Scissor official audio"),
+    "alternative": ("Pavement Cut Your Hair official audio", "PJ Harvey Down by the Water official audio", "Modest Mouse Teeth Like God's Shoeshine official audio", "Yo La Tengo Sugarcube official audio", "The Breeders Cannonball official audio"),
+    "pop": ("Charli XCX 360 official audio", "Caroline Polachek So Hot You're Hurting My Feelings official audio", "Chappell Roan Red Wine Supernova official audio", "MUNA Number One Fan official audio", "Magdalena Bay Image official audio"),
+    "funk": ("Average White Band Pick Up the Pieces official audio", "Tower of Power What Is Hip official audio", "Sly and the Family Stone Thank You official audio", "Ohio Players Fire official audio", "Cory Wong Cosmic Sans official audio"),
+    "soul-rnb": ("Jill Scott A Long Walk official audio", "Maxwell Ascension official audio", "Curtis Mayfield Move On Up official audio", "Sade Paradise official audio", "Anderson Paak Come Down official audio"),
+    "jazz": ("Thelonious Monk Straight No Chaser official audio", "Charles Mingus Haitian Fight Song official audio", "Chick Corea Spain official audio", "John Coltrane Impressions official audio", "Yussef Dayes Black Classical Music official audio"),
+    "blues": ("Howlin Wolf Smokestack Lightning official audio", "Buddy Guy Damn Right I've Got the Blues official audio", "Koko Taylor Wang Dang Doodle official audio", "Taj Mahal Leaving Trunk official audio", "Samantha Fish Faster official audio"),
+    "country": ("Tyler Childers Whitehouse Road official audio", "Margo Price Hurtin on the Bottle official audio", "Drive By Truckers Outfit official audio", "Turnpike Troubadours Good Lord Lorrie official audio", "Waxahatchee Right Back to It official audio"),
+    "hip-hop": ("Mos Def Mathematics official audio", "Little Simz Gorilla official audio", "Run the Jewels Legend Has It official audio", "MF DOOM Rhymes Like Dimes official audio", "J Dilla Workinonit official audio"),
+    "electronic": ("Four Tet Two Thousand and Seventeen official audio", "Boards of Canada Roygbiv official audio", "Jon Hopkins Open Eye Signal official audio", "Bicep Glue official audio", "The Avalanches Since I Left You official audio"),
+    "reggae-ska": ("Desmond Dekker Israelites official audio", "Lee Scratch Perry Roast Fish and Cornbread official audio", "Steel Pulse Steppin Out official audio", "Madness One Step Beyond official audio", "Hepcat No Worries official audio"),
+    "progressive": ("Genesis Dance on a Volcano official audio", "Jethro Tull Songs from the Wood official audio", "Steven Wilson Luminol official audio", "Haken Cockroach King official audio", "The Mars Volta L'Via L'Viaquez official audio"),
+}
+
 NON_ORIGINAL_RESULT_TERMS = (
     "drumless",
     "drums removed",
@@ -68,7 +125,26 @@ NON_ORIGINAL_RESULT_TERMS = (
     "compilation",
     "reaction",
     "tutorial",
-    " cover",
+    " cover version",
+    " cover by",
+    "(cover",
+    "[cover",
+    "live at",
+    "live from",
+    "(live",
+    "[live",
+    "concert",
+    "rehearsal",
+    "soundcheck",
+    " demo",
+    "acoustic",
+    "unplugged",
+    "remix",
+    "slowed",
+    "sped up",
+    "nightcore",
+    "performance",
+    "session version",
 )
 
 CHALLENGES = (
@@ -110,16 +186,75 @@ def youtube_genre_options() -> list[dict]:
     return [{"id": key, "label": GENRE_LABELS[key], "count": None} for key in GENRES]
 
 
-def youtube_challenge_query(genre: str) -> str:
+def youtube_challenge_seed(genre: str) -> dict[str, str]:
     try:
-        return choice(YOUTUBE_CHALLENGE_QUERIES[genre])
+        lane_roll = randbelow(10)
+        if lane_roll < 4:
+            lane, pool = "familiar", YOUTUBE_CHALLENGE_QUERIES[genre]
+        elif lane_roll < 8:
+            lane, pool = "discovery", YOUTUBE_DISCOVERY_QUERIES[genre]
+        else:
+            lane, pool = "deep-cut", YOUTUBE_DEEP_CUT_QUERIES[genre]
+        return {"query": choice(pool), "lane": lane}
     except KeyError:
         raise KeyError(genre) from None
+
+
+def youtube_challenge_query(genre: str) -> str:
+    return youtube_challenge_seed(genre)["query"]
+
+
+def youtube_challenge_hand(genre: str, excluded: set[str] | None = None) -> list[dict[str, str]]:
+    """Deal five balanced seeds: two familiar, two discoveries, one deep cut."""
+    try:
+        lanes = (
+            ("familiar", YOUTUBE_CHALLENGE_QUERIES[genre], 2),
+            ("discovery", YOUTUBE_DISCOVERY_QUERIES[genre] + YOUTUBE_EXTRA_QUERIES[genre], 2),
+            ("deep-cut", YOUTUBE_DEEP_CUT_QUERIES[genre], 1),
+        )
+    except KeyError:
+        raise KeyError(genre) from None
+    excluded = excluded or set()
+    hand = []
+    leftovers = []
+    for lane, pool, count in lanes:
+        available = [query for query in pool if challenge_song_key({"title": query}) not in excluded]
+        take = min(count, len(available))
+        for _ in range(take):
+            query = choice(available)
+            available.remove(query)
+            hand.append({"query": query, "lane": lane})
+        leftovers.extend({"query": query, "lane": lane} for query in available)
+    while leftovers and len(hand) < 5:
+        seed = choice(leftovers)
+        leftovers.remove(seed)
+        hand.append(seed)
+    if len(hand) < 5:
+        # The exact-song bag has genuinely cycled; begin it again.
+        return youtube_challenge_hand(genre)
+    return sorted(hand, key=lambda _: randbelow(1_000_000))
+
+
+def youtube_genre_explore_query(genre: str) -> str:
+    if genre not in GENRE_LABELS:
+        raise KeyError(genre)
+    decade = choice(("1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"))
+    return f"{GENRE_LABELS[genre]} {decade} studio song official audio"
 
 
 def is_original_song_result(result: dict) -> bool:
     title = str(result.get("title") or "").casefold()
     return not any(term in title for term in NON_ORIGINAL_RESULT_TERMS)
+
+
+def challenge_song_key(result: dict) -> str:
+    title = str(result.get("title") or "").casefold()
+    title = re.sub(r"[\[(].*?[\])]", " ", title)
+    title = re.sub(
+        r"\b(?:official|music|audio|video|lyrics?|remaster(?:ed)?|hd|hq|vevo)\b",
+        " ", title,
+    )
+    return re.sub(r"[^a-z0-9]+", "-", title).strip("-")[:140]
 
 
 def draw_track(tracks: list[Track], genre: str, eligible_ids: set[str] | None = None) -> Track:
@@ -132,6 +267,28 @@ def draw_track(tracks: list[Track], genre: str, eligible_ids: set[str] | None = 
     if not pool:
         raise LookupError(genre)
     return choice(pool)
+
+
+def draw_tracks(
+    tracks: list[Track], genre: str, eligible_ids: set[str] | None = None,
+    count: int = 5, excluded_ids: set[str] | None = None,
+) -> list[Track]:
+    pool = [
+        track for track in tracks
+        if genre in track_genres(track)
+        and (eligible_ids is None or track.id in eligible_ids)
+        and (excluded_ids is None or track.id not in excluded_ids)
+    ]
+    if genre not in GENRES:
+        raise KeyError(genre)
+    if not pool:
+        raise LookupError(genre)
+    chosen = []
+    while pool and len(chosen) < count:
+        track = choice(pool)
+        pool.remove(track)
+        chosen.append(track)
+    return chosen
 
 
 def draw_challenge() -> dict:
