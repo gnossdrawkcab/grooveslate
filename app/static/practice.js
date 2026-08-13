@@ -50,6 +50,27 @@
     $$("[data-workbench]").forEach((button) => button.classList.toggle("active", button.dataset.workbench === name));
     $$("[data-workbench-panel]").forEach((panel) => panel.classList.toggle("active", panel.dataset.workbenchPanel === name));
     if (name === "record") ensureDrumSamples().catch(() => {});
+    if (name === "score") loadBandScore();
+  }
+
+  function bandScoreUrl() {
+    const track = practiceState.job?.track || {};
+    const title = String(track.title || "")
+      .replace(/\((?:official|lyrics?|audio|video|hd)[^)]*\)/gi, " ")
+      .replace(/\[(?:official|lyrics?|audio|video|hd)[^\]]*\]/gi, " ")
+      .replace(/\b(?:official\s+(?:music\s+)?video|lyrics?\s+video)\b/gi, " ")
+      .replace(/\s+/g, " ").trim();
+    const query = [track.artist, title].filter(Boolean).join(" ");
+    return `https://tabforge.pathtpc.xyz/library?q=${encodeURIComponent(query)}&external=1&embed=1`;
+  }
+
+  function loadBandScore(force = false) {
+    const frame = $("#band-score-frame");
+    const url = bandScoreUrl();
+    if (force || frame.dataset.song !== url) {
+      frame.dataset.song = url;
+      frame.src = force ? `${url}&reload=${Date.now()}` : url;
+    }
   }
 
   function settings() {
@@ -1147,6 +1168,7 @@
   }
 
   document.addEventListener("drumless:practice-job", (event) => loadPractice(event.detail));
+  document.addEventListener("drumless:open-score", () => setPanel("score"));
   document.addEventListener("drumless:mix-changed", (event) => {
     if (practiceState.job?.id === event.detail.jobId && event.detail.model === "roformer") {
       loadWaveform(event.detail.jobId, event.detail.excluded || [], event.detail.mixId || "");
@@ -1158,6 +1180,7 @@
     releaseWakeLock();
     practiceState.job = null; practiceState.session = null; practiceState.waveform = null; practiceState.waveformJobId = null;
   });
+  $("#reload-band-score").addEventListener("click", () => loadBandScore(true));
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && practiceState.audio && !practiceState.audio.paused) requestWakeLock();
   });

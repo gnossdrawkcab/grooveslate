@@ -387,6 +387,39 @@ class Processor:
         self._run(command)
         return destination, mix_id
 
+    def render_pitch_variant(
+        self,
+        job_id: str,
+        model: str,
+        source: Path,
+        semitones: int,
+    ) -> tuple[Path, str]:
+        """Render and cache a tempo-preserving pitch shift for practice."""
+        if model not in MODELS or not source.is_file():
+            raise KeyError(model)
+        if semitones < -12 or semitones > 12:
+            raise ValueError("Pitch must be between -12 and +12 semitones")
+        variant_id = sha256(f"{source.stem}:{semitones}".encode("utf-8")).hexdigest()[:12]
+        destination = self.store.root / job_id / model / "pitches" / f"{variant_id}.flac"
+        if destination.is_file():
+            return destination, variant_id
+        destination.parent.mkdir(parents=True, exist_ok=True)
+        factor = 2 ** (semitones / 12)
+        # All separated/rendered mixes are 44.1 kHz. Changing the interpreted
+        # sample rate shifts pitch, then atempo restores the original duration.
+        audio_filter = (
+            f"asetrate=44100*{factor:.9f},aresample=44100,"
+            f"atempo={1 / factor:.9f}"
+        )
+        self._run(
+            [
+                "ffmpeg", "-hide_banner", "-loglevel", "error", "-y",
+                "-i", str(source), "-af", audio_filter,
+                "-c:a", "flac", "-sample_fmt", "s32", str(destination),
+            ]
+        )
+        return destination, variant_id
+
     def _prepare_source(self, source: Path, work_dir: Path) -> Path:
         prepared = work_dir / "input" / "source.wav"
         prepared.parent.mkdir(parents=True, exist_ok=True)

@@ -161,6 +161,32 @@ def test_waveform_builds_display_peaks_and_caches_them(tmp_path: Path, monkeypat
     assert str(custom_mix) in calls[-1][0][calls[-1][0].index("-i") + 1]
 
 
+def test_pitch_variant_preserves_tempo_and_is_cached(tmp_path: Path, monkeypatch):
+    config = settings(tmp_path)
+    store = JobStore(config.data_root / "jobs")
+    source = store.output_path("job", "roformer")
+    source.parent.mkdir(parents=True)
+    source.write_bytes(b"audio")
+    processor = Processor(config, MusicLibrary(config.music_root), store)
+    calls = []
+
+    def fake_run(command):
+        calls.append(command)
+        Path(command[-1]).write_bytes(b"shifted")
+
+    monkeypatch.setattr(processor, "_run", fake_run)
+    first, first_id = processor.render_pitch_variant("job", "roformer", source, -2)
+    second, second_id = processor.render_pitch_variant("job", "roformer", source, -2)
+
+    assert first == second
+    assert first_id == second_id
+    assert first.read_bytes() == b"shifted"
+    assert len(calls) == 1
+    audio_filter = calls[0][calls[0].index("-af") + 1]
+    assert "asetrate=44100*" in audio_filter
+    assert "atempo=" in audio_filter
+
+
 def test_library_automatically_rescans_after_cache_expires(tmp_path: Path):
     root = tmp_path / "music"
     root.mkdir()
@@ -399,7 +425,8 @@ def test_frontend_and_health(tmp_path: Path):
         assert "rights-confirmed" not in homepage.text
         assert 'id="session-studio"' in homepage.text
         assert 'id="global-progress"' in homepage.text
-        assert "QUICK MIXES" in homepage.text
+        assert 'id="new-song-button"' in homepage.text
+        assert "CHOOSE YOUR PRACTICE MIX" in homepage.text
         assert client.get("/logo.svg").status_code == 200
         assert client.get("/manifest.webmanifest").status_code == 200
         assert client.get("/service-worker.js").status_code == 200
@@ -417,7 +444,9 @@ def test_frontend_and_health(tmp_path: Path):
         assert "function selectChallengeGenre" in javascript
         assert 'id="draw-selected-genre"' in homepage.text
         assert 'accept.textContent = "Preparing song…"' in javascript
-        assert '["Bassless", ["bass"]]' in javascript
+        assert '["Play bass", ["bass"]]' in javascript
+        assert "function applyPitch" in javascript
+        assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
         assert "Capture at the actual swap" in javascript
         assert 'url.includes("?") ? "&" : "?"' in javascript
         assert "current mix keeps playing" in javascript

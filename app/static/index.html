@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-20" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-25" />
   </head>
   <body>
     <div class="noise"></div>
@@ -25,6 +25,7 @@
         <span>GROOVE / SLATE</span>
       </a>
       <div class="topbar-actions">
+        <button class="new-song-button" id="new-song-button" type="button">＋ New song</button>
         <button class="install-app hidden" id="install-app" type="button">Install app</button>
         <div class="system-state"><span class="status-dot"></span> ROFORMER PROCESSOR <strong id="gpu-state">READY</strong></div>
         <a class="user-chip" id="current-user-chip" href="/logout" title="Switch user">…</a>
@@ -188,6 +189,11 @@
               <h3>Play-along mix</h3>
               <p class="model-description">Your selected stems, ready for focused practice.</p>
               <div class="active-challenge hidden" id="active-challenge"><span>⚡ ACTIVE CHALLENGE</span><strong id="active-challenge-title">—</strong><p id="active-challenge-copy">—</p><em id="active-challenge-progress">Challenge in progress</em></div>
+              <div class="live-phase">
+                <span class="phase-name">Waiting</span><b class="phase-percent">0%</b>
+                <div class="phase-rail"><i></i></div>
+                <small class="phase-detail">Queued until you run a comparison</small>
+              </div>
               <div class="practice-player">
                 <button class="transport-play" aria-label="Play" disabled><span>▶</span></button>
                 <div class="timeline">
@@ -208,9 +214,37 @@
                       <option value="1.25">1.25×</option>
                     </select>
                   </label>
+                  <label class="pitch-control">PITCH
+                    <select class="pitch-select" disabled>
+                      <option value="-12">−12</option>
+                      <option value="-7">−7</option>
+                      <option value="-5">−5</option>
+                      <option value="-3">−3</option>
+                      <option value="-2">−2</option>
+                      <option value="-1">−1</option>
+                      <option value="0" selected>Original</option>
+                      <option value="1">+1</option>
+                      <option value="2">+2</option>
+                      <option value="3">+3</option>
+                      <option value="5">+5</option>
+                      <option value="7">+7</option>
+                      <option value="12">+12</option>
+                    </select>
+                  </label>
+                  <button class="band-score-button" type="button" disabled>♫ Open score</button>
                   <span class="keyboard-hint">SPACE play · ← → seek</span>
                 </div>
                 <audio preload="metadata"></audio>
+              </div>
+              <div class="stem-mixer">
+                <span>CHOOSE YOUR PRACTICE MIX · SWITCHING KEEPS YOUR PLACE</span>
+                <div class="mix-presets"><i>Available after separation</i></div>
+                <details class="custom-mixer">
+                  <summary>Fine-tune individual stems</summary>
+                  <span class="custom-mix-label">TAP ANY PART TO REMOVE IT</span>
+                  <div class="stem-buttons"><i>Available after separation</i></div>
+                  <button class="build-mix" disabled>Apply custom mix</button>
+                </details>
               </div>
               <section class="session-studio hidden" id="session-studio">
                 <div class="session-heading">
@@ -225,6 +259,7 @@
                   <button data-workbench="chart" type="button"><b>02</b> Chart</button>
                   <button data-workbench="practice" type="button"><b>03</b> Practice</button>
                   <button data-workbench="record" type="button"><b>04</b> Record</button>
+                  <button data-workbench="score" type="button"><b>05</b> Score</button>
                 </div>
                 <div class="song-map" id="song-map" aria-label="Song chart timeline">
                   <canvas id="song-waveform" aria-hidden="true"></canvas>
@@ -359,19 +394,17 @@
                   <div class="takes-heading"><span>SAVED TAKES</span><b id="takes-count">0</b></div>
                   <div class="takes-list" id="takes-list"><p>No takes yet. The first one does not need to be perfect.</p></div>
                 </div>
+
+                <div class="workbench-panel score-panel" data-workbench-panel="score">
+                  <div class="score-panel-heading">
+                    <div><span>BAND MATERIAL · POWERED BY TABFORGE</span><h5>Tabs, notation, chords, lyrics, and parts</h5><p>The current song is searched automatically. Import or choose the best version, then practice without leaving GrooveSlate.</p></div>
+                    <button id="reload-band-score" type="button">Reload score</button>
+                  </div>
+                  <div class="score-frame-shell">
+                    <iframe id="band-score-frame" title="TabForge score workspace" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
+                  </div>
+                </div>
               </section>
-              <div class="live-phase">
-                <span class="phase-name">Waiting</span><b class="phase-percent">0%</b>
-                <div class="phase-rail"><i></i></div>
-                <small class="phase-detail">Queued until you run a comparison</small>
-              </div>
-              <div class="stem-mixer">
-                <span>QUICK MIXES · SWITCHING ALWAYS KEEPS YOUR PLACE</span>
-                <div class="mix-presets"><i>Available after separation</i></div>
-                <span class="custom-mix-label">CUSTOM MIX · TAP ANY PART TO REMOVE IT</span>
-                <div class="stem-buttons"><i>Available after separation</i></div>
-                <button class="build-mix" disabled>Rebuild selected mix</button>
-              </div>
               <div class="model-meta">
                 <span class="model-time">— processing time</span>
                 <span><button class="copy-link" disabled>Copy link</button><a class="download disabled" href="#">Download FLAC ↓</a></span>
@@ -392,7 +425,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-20" defer></script>
-    <script src="/practice.js?v=20260813-20" defer></script>
+    <script src="/app.js?v=20260813-25" defer></script>
+    <script src="/practice.js?v=20260813-25" defer></script>
   </body>
 </html>

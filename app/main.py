@@ -43,6 +43,12 @@ class MixRequest(BaseModel):
     excluded: list[str]
 
 
+class PitchRequest(BaseModel):
+    semitones: int = Field(ge=-12, le=12)
+    excluded: list[str] = Field(default_factory=list)
+    mix_id: str = Field(default="", max_length=24)
+
+
 class URLImportRequest(BaseModel):
     url: str
     title: str = ""
@@ -999,6 +1005,52 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             media_type="audio/flac",
             filename=f"{safe_title} - {MODELS[model]['name']} - custom mix.flac",
         )
+
+    @app.post("/api/jobs/{job_id}/pitch/{model}")
+    def render_pitch(
+        job_id: str, model: str, payload: PitchRequest, request: Request
+    ) -> dict:
+        try:
+            job = owned_job(job_id, request.state.user)
+            if model not in MODELS or job["models"][model]["status"] != "complete":
+                raise HTTPException(status_code=409, detail="Model is not complete")
+            if payload.mix_id:
+                if not payload.mix_id.isalnum():
+                    raise ValueError("Invalid mix identifier")
+                source = store.root / job_id / model / "mixes" / f"{payload.mix_id}.flac"
+                if not source.is_file():
+                    raise KeyError(payload.mix_id)
+            elif payload.excluded:
+                source, _ = processor.render_stem_mix(job_id, model, payload.excluded)
+            else:
+                source = store.output_path(job_id, model)
+            _, variant_id = processor.render_pitch_variant(
+                job_id, model, source, payload.semitones
+            )
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Job, mix, or model not found") from None
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+        return {
+            "variant_id": variant_id,
+            "semitones": payload.semitones,
+            "audio_url": f"/api/jobs/{job_id}/pitch/{model}/{variant_id}",
+        }
+
+    @app.get("/api/jobs/{job_id}/pitch/{model}/{variant_id}")
+    def stream_pitch(
+        job_id: str, model: str, variant_id: str, request: Request
+    ):
+        if model not in MODELS or not variant_id.isalnum():
+            raise HTTPException(status_code=404, detail="Pitch variant not found")
+        try:
+            owned_job(job_id, request.state.user)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Job not found") from None
+        path = store.root / job_id / model / "pitches" / f"{variant_id}.flac"
+        if not path.is_file():
+            raise HTTPException(status_code=404, detail="Pitch variant not found")
+        return FileResponse(path, media_type="audio/flac")
 
     @app.get("/songs/{slug}/mix/{model}")
     def stream_named_mix(

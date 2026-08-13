@@ -85,6 +85,7 @@ function apiActivity(path, options = {}) {
   if (path === "/api/imports/upload") return "Uploading source audio…";
   if (path === "/api/jobs" && method === "POST") return "Queueing GPU separation…";
   if (path.includes("/mix/") && method === "POST") return "Updating the stem mix…";
+  if (path.includes("/pitch/") && method === "POST") return "Shifting pitch without changing tempo…";
   if (path.includes("/waveform/")) return "Updating waveform for the selected mix…";
   if (path.includes("/auto-map")) return "Analyzing beats, form, and energy…";
   if (path.includes("/practice/takes") && method === "POST") return "Saving the recorded take…";
@@ -800,7 +801,11 @@ function updateJobView(job) {
     if (model.status === "complete") {
       card.classList.add("ready");
       const audio = $("audio", card);
-      audio.src = `${model.audio_url}?v=${encodeURIComponent(job.updated_at)}`;
+      const sourceUrl = `${model.audio_url}?v=${encodeURIComponent(job.updated_at)}`;
+      audio.src = sourceUrl;
+      card.dataset.baseAudioUrl = sourceUrl;
+      card.dataset.mixId = "";
+      card.dataset.excluded = "drums";
       const download = $(".download", card);
       download.href = model.download_url;
       download.classList.remove("disabled");
@@ -851,12 +856,12 @@ async function loadStems(jobId, model, card) {
       });
     });
     const presetDefinitions = [
-      ["Full mix", []],
-      ["Drumless", ["drums"]],
-      ["Bassless", ["bass"]],
-      ["Vocalless", ["vocals"]],
-      ["Guitarless", ["guitar"]],
-      ["Keysless", ["piano"]],
+      ["Full band", []],
+      ["Play drums", ["drums"]],
+      ["Play bass", ["bass"]],
+      ["Sing", ["vocals"]],
+      ["Play guitar", ["guitar"]],
+      ["Play keys", ["piano"]],
     ].filter(([, excluded]) => excluded.every((stem) => available.has(stem)));
     const presets = $(".mix-presets", card);
     presets.innerHTML = presetDefinitions.map(([label, excluded]) => `
@@ -920,7 +925,12 @@ async function buildCustomMix(jobId, model, card) {
         body: JSON.stringify({ excluded }),
       });
     const audio = $("audio", card);
-    await replaceAudioSource(audio, cacheBusted(mix.audio_url));
+    card.dataset.baseAudioUrl = mix.audio_url;
+    card.dataset.mixId = mix.mix_id || "";
+    card.dataset.excluded = (mix.excluded || excluded).join(",");
+    const pitch = Number($(".pitch-select", card)?.value || 0);
+    if (pitch) await applyPitch(card, false);
+    else await replaceAudioSource(audio, cacheBusted(mix.audio_url));
     document.dispatchEvent(new CustomEvent("drumless:mix-changed", {
       detail: { jobId, model, excluded: mix.excluded || excluded, mixId: mix.mix_id || "" },
     }));
@@ -942,6 +952,34 @@ async function buildCustomMix(jobId, model, card) {
       card.dataset.mixPending = "false";
       buildCustomMix(jobId, model, card);
     }
+  }
+}
+
+async function applyPitch(card, announce = true) {
+  const audio = $("audio", card);
+  const select = $(".pitch-select", card);
+  const semitones = Number(select.value);
+  select.disabled = true;
+  try {
+    if (semitones === 0) {
+      await replaceAudioSource(audio, cacheBusted(card.dataset.baseAudioUrl));
+    } else {
+      const variant = await api(`/api/jobs/${state.job.id}/pitch/${card.dataset.model}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({
+          semitones,
+          excluded: (card.dataset.excluded || "").split(",").filter(Boolean),
+          mix_id: card.dataset.mixId || "",
+        }),
+      });
+      await replaceAudioSource(audio, cacheBusted(variant.audio_url));
+    }
+    if (announce) toast(semitones ? `Pitch shifted ${semitones > 0 ? "+" : ""}${semitones} semitone${Math.abs(semitones) === 1 ? "" : "s"}` : "Original pitch restored");
+  } catch (error) {
+    toast(error.message);
+  } finally {
+    select.disabled = false;
   }
 }
 
@@ -1014,6 +1052,13 @@ function resetPracticePlayer(card) {
   const speed = $(".speed-select", card);
   speed.disabled = true;
   speed.value = "1";
+  const pitch = $(".pitch-select", card);
+  pitch.disabled = true;
+  pitch.value = "0";
+  $(".band-score-button", card).disabled = true;
+  card.dataset.mixId = "";
+  card.dataset.excluded = "drums";
+  card.dataset.baseAudioUrl = "";
 }
 
 function setupPracticePlayer(card) {
@@ -1022,6 +1067,8 @@ function setupPracticePlayer(card) {
   const scrubber = $(".scrubber", card);
   const loop = $(".loop-button", card);
   const speed = $(".speed-select", card);
+  const pitch = $(".pitch-select", card);
+  const bandScore = $(".band-score-button", card);
 
   const setReady = () => {
     const ready = Number.isFinite(audio.duration) && audio.duration > 0;
@@ -1029,6 +1076,8 @@ function setupPracticePlayer(card) {
     scrubber.disabled = !ready;
     loop.disabled = !ready;
     speed.disabled = !ready;
+    pitch.disabled = !ready;
+    bandScore.disabled = !ready;
     $$(".seek-button", card).forEach((button) => { button.disabled = !ready; });
     $(".duration", card).textContent = formatTime(audio.duration);
   };
@@ -1082,6 +1131,10 @@ function setupPracticePlayer(card) {
   speed.addEventListener("change", () => {
     audio.playbackRate = Number(speed.value);
     toast(`Playback speed: ${speed.value}×`);
+  });
+  pitch.addEventListener("change", () => applyPitch(card));
+  bandScore.addEventListener("click", () => {
+    document.dispatchEvent(new CustomEvent("drumless:open-score"));
   });
   loop.addEventListener("click", () => {
     if (!Number.isFinite(card._loopStart)) {
@@ -1227,6 +1280,17 @@ function openStudio(mode) {
   }, 450);
 }
 
+function chooseNewSong() {
+  if (window.location.pathname !== "/") {
+    window.location.assign("/");
+    return;
+  }
+  $$('audio').forEach((audio) => audio.pause());
+  document.body.classList.remove("studio-open");
+  window.scrollTo({ top: 0, behavior: "smooth" });
+  window.setTimeout(() => $("#home-song-search-input").focus(), 450);
+}
+
 function applyTheme(theme) {
   const selected = theme === "light" ? "light" : "dark";
   document.documentElement.dataset.theme = selected;
@@ -1286,6 +1350,7 @@ $$('[data-home-action]').forEach((button) => {
 $("#theme-toggle").addEventListener("click", () => {
   applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 });
+$("#new-song-button").addEventListener("click", chooseNewSong);
 $("#install-app").addEventListener("click", async () => {
   if (!pendingInstallPrompt) return;
   await pendingInstallPrompt.prompt();
