@@ -482,15 +482,15 @@ def test_frontend_and_health(tmp_path: Path):
         assert "function selectChallengeGenre" in javascript
         assert 'id="draw-selected-genre"' in homepage.text
         assert 'accept.textContent = "Preparing song…"' in javascript
-        assert '["Remove bass", ["bass"]]' in javascript
-        assert 'class="drum-toggle"' in javascript
-        assert 'class="solo-drums"' in javascript
-        assert 'removed ? "Restore drums" : "Remove drums"' in javascript
+        assert 'class="reset-mix"' in javascript
+        assert '>Mute</button>' in javascript
+        assert '>Solo</button>' in javascript
+        assert 'Loading ${soloed.join(" + ")} solo…' in javascript
         assert 'url.searchParams.set("remove"' in javascript
         assert 'linkedMixState(available)' in javascript
         assert 'class="solo-toggle"' in javascript
         assert 'soloed.length && !soloedSet.has(stem)' in javascript
-        assert '<details class="custom-mixer" open>' in homepage.text
+        assert '<section class="custom-mixer">' in homepage.text
         assert "function applyPitch" in javascript
         assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
         assert "Capture at the actual swap" in javascript

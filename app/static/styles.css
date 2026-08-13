@@ -643,28 +643,24 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .phase-detail { grid-column: 1 / -1; color: var(--muted); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
 .stem-mixer { margin: 18px 0 10px; padding: 14px; border: 1px solid var(--line); background: rgba(0,0,0,.12); }
 .stem-mixer > span { display: block; margin-bottom: 8px; color: var(--muted); font: 500 7px var(--mono); letter-spacing: .1em; }
-.mix-presets { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; }
+.mix-status { min-height: 42px; display: flex; align-items: center; gap: 10px; margin: 0 0 8px; padding: 8px 11px; border: 1px solid var(--line); color: var(--muted); font: 700 10px var(--mono); }
+.mix-status i { width: 8px; height: 8px; flex: 0 0 auto; border-radius: 50%; background: var(--lime); }
+.mix-status.loading { border-color: color-mix(in srgb, var(--orange) 65%, var(--line)); color: var(--ink); }
+.mix-status.loading i { background: var(--orange); animation: pulse .8s infinite; }
+.mix-presets { display: flex; justify-content: flex-end; margin-bottom: 8px; }
 .mix-presets i { color: var(--muted); font: 8px var(--mono); }
-.mix-presets button { min-height: 38px; padding: 6px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: 700 10px var(--sans); cursor: pointer; }
+.mix-presets button { min-height: 38px; padding: 6px 14px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: 700 10px var(--sans); cursor: pointer; }
 .mix-presets button:hover { border-color: var(--orange); }
-.mix-presets button.active { border-color: var(--orange); background: var(--orange); color: white; }
-.mix-presets button.active:not([data-mix-preset=""]):not(.solo-drums) { text-decoration: line-through 2px; text-decoration-color: currentColor; }
-.drum-mix-control { display: grid; grid-column: span 2; grid-template-columns: 1fr 1fr; gap: 0; }
-.drum-mix-control button:first-child { border-right-width: 0; }
-.drum-mix-control .solo-drums { border-color: color-mix(in srgb, var(--orange) 50%, var(--line)); }
-.drum-mix-control .solo-drums.active { text-decoration: none; }
+.mix-presets button:disabled { opacity: .4; cursor: default; }
 .custom-mixer { margin-top: 10px; border-top: 1px solid var(--line); }
-.custom-mixer summary { min-height: 44px; display: flex; align-items: center; justify-content: space-between; color: var(--ink); font: 700 11px var(--sans); cursor: pointer; list-style: none; }
-.custom-mixer summary::-webkit-details-marker { display: none; }
-.custom-mixer summary::after { content: "+"; color: var(--orange); font: 16px var(--mono); }
-.custom-mixer[open] summary::after { content: "−"; }
+.custom-mixer-heading { min-height: 44px; display: flex; align-items: center; color: var(--ink); font: 700 11px var(--sans); }
 .custom-mix-label { display: block; margin: 2px 0 9px; color: var(--muted); font: 600 9px/1.5 var(--mono); letter-spacing: .07em; }
 .stem-buttons { display: grid; grid-template-columns: repeat(3, minmax(0, 1fr)); gap: 6px; min-height: 23px; }
 .stem-buttons i { color: var(--muted); font: 8px var(--mono); }
 .stem-channel { display: grid; grid-template-columns: minmax(0, 1fr) auto; align-items: center; min-height: 46px; border: 1px solid var(--line); background: var(--paper); }
 .stem-channel > span { padding: 0 9px; overflow: hidden; color: var(--ink); font: 700 9px var(--mono); text-overflow: ellipsis; text-transform: uppercase; white-space: nowrap; }
 .stem-channel > div { display: flex; align-self: stretch; }
-.stem-toggle, .solo-toggle { width: 40px; min-height: 44px; border: 0; border-left: 1px solid var(--line); background: transparent; padding: 0; color: var(--muted); font: 800 12px var(--mono); cursor: pointer; }
+.stem-toggle, .solo-toggle { width: 58px; min-height: 44px; border: 0; border-left: 1px solid var(--line); background: transparent; padding: 0 5px; color: var(--muted); font: 800 9px var(--mono); cursor: pointer; }
 .stem-toggle:hover, .solo-toggle:hover { color: var(--ink); }
 .stem-toggle.removed { background: var(--orange); color: white; text-decoration: line-through 2px; }
 .solo-toggle.active { background: var(--lime); color: var(--dark); }
@@ -931,10 +927,9 @@ kbd, .folder-row select, .folder-row span, .search-source-heading,
   .performance-stats span:nth-child(2) { border-right: 0; }
   .stem-mixer { margin: 14px 0; padding: 11px; }
   .stem-buttons { gap: 7px; }
-  .stem-buttons { grid-template-columns: repeat(2, minmax(0, 1fr)); }
-  .mix-presets { grid-template-columns: repeat(2, minmax(0, 1fr)); }
+  .stem-buttons { grid-template-columns: 1fr; }
   .mix-presets button { min-height: 44px; font-size: 12px; }
-  .stem-toggle { min-height: 36px; padding: 7px 9px; font-size: 8px; }
+  .stem-toggle, .solo-toggle { width: 64px; min-height: 46px; padding: 7px 9px; font-size: 10px; }
   .build-mix { min-height: 42px; font-size: 9px; }
   .waveform { height: 34px; }
   .model-meta { align-items: flex-start; flex-wrap: wrap; gap: 12px; }

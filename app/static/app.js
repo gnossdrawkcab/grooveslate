@@ -905,8 +905,8 @@ async function loadStems(jobId, model, card) {
       <div class="stem-channel" data-stem="${escapeHtml(stem.name)}">
         <span>${escapeHtml(stem.name)}</span>
         <div role="group" aria-label="${escapeHtml(stem.name)} channel controls">
-          <button class="stem-toggle ${stem.name === "drums" ? "removed" : ""}" data-stem="${escapeHtml(stem.name)}" aria-label="Mute ${escapeHtml(stem.name)}" aria-pressed="${stem.name === "drums"}">M</button>
-          <button class="solo-toggle" data-stem="${escapeHtml(stem.name)}" aria-label="Solo ${escapeHtml(stem.name)}" aria-pressed="false">S</button>
+          <button class="stem-toggle ${stem.name === "drums" ? "removed" : ""}" data-stem="${escapeHtml(stem.name)}" aria-label="Mute ${escapeHtml(stem.name)}" aria-pressed="${stem.name === "drums"}">Mute</button>
+          <button class="solo-toggle" data-stem="${escapeHtml(stem.name)}" aria-label="Solo ${escapeHtml(stem.name)}" aria-pressed="false">Solo</button>
         </div>
       </div>
     `).join("");
@@ -938,40 +938,12 @@ async function loadStems(jobId, model, card) {
         scheduleCustomMix(jobId, model, card);
       });
     });
-    const presetDefinitions = [
-      ["Full mix", []],
-      ["Remove bass", ["bass"]],
-      ["Remove vocals", ["vocals"]],
-      ["Remove guitar", ["guitar"]],
-      ["Remove keys", ["piano"]],
-    ].filter(([, excluded]) => excluded.every((stem) => available.has(stem)));
     const presets = $(".mix-presets", card);
-    const drumControls = available.has("drums") ? `
-      <div class="drum-mix-control" role="group" aria-label="Drum mix shortcuts">
-        <button type="button" class="drum-toggle" data-stem-action="drums">Remove drums</button>
-        <button type="button" class="solo-drums" data-stem-solo-action="drums">Solo drums</button>
-      </div>
-    ` : "";
-    presets.innerHTML = drumControls + presetDefinitions.map(([label, excluded]) => `
-      <button type="button" data-mix-preset="${excluded.join(",")}">${label}</button>
-    `).join("");
-    $('[data-stem-action="drums"]', presets)?.addEventListener("click", async () => {
-      const drums = $('.stem-toggle[data-stem="drums"]', card);
-      drums.click();
-      window.clearTimeout(card._mixTimer);
-      await buildCustomMix(jobId, model, card);
-    });
-    $('[data-stem-solo-action="drums"]', presets)?.addEventListener("click", async () => {
-      const drums = $('.solo-toggle[data-stem="drums"]', card);
-      drums.click();
-      window.clearTimeout(card._mixTimer);
-      await buildCustomMix(jobId, model, card);
-    });
-    $$('[data-mix-preset]', presets).forEach((button) => button.addEventListener("click", async () => {
-      const muted = new Set(button.dataset.mixPreset.split(",").filter(Boolean));
+    presets.innerHTML = '<button type="button" class="reset-mix">Reset mixer</button>';
+    $(".reset-mix", presets).addEventListener("click", () => {
       $$(".stem-toggle", card).forEach((stemButton) => {
-        stemButton.classList.toggle("removed", muted.has(stemButton.dataset.stem));
-        stemButton.setAttribute("aria-pressed", String(stemButton.classList.contains("removed")));
+        stemButton.classList.remove("removed");
+        stemButton.setAttribute("aria-pressed", "false");
       });
       $$(".solo-toggle", card).forEach((soloButton) => {
         soloButton.classList.remove("active");
@@ -979,8 +951,8 @@ async function loadStems(jobId, model, card) {
       });
       syncMixPreset(card);
       syncMixUrl(card);
-      await buildCustomMix(jobId, model, card);
-    }));
+      scheduleCustomMix(jobId, model, card);
+    });
     const linkedMix = linkedMixState(available);
     if (linkedMix !== null) {
       $$(".stem-toggle", card).forEach((stemButton) => {
@@ -994,6 +966,7 @@ async function loadStems(jobId, model, card) {
     }
     syncMixPreset(card);
     syncMixUrl(card);
+    setMixStatus(card, "Mix ready");
     const build = $(".build-mix", card);
     build.disabled = false;
     build.onclick = () => buildCustomMix(jobId, model, card);
@@ -1009,24 +982,8 @@ async function loadStems(jobId, model, card) {
 
 function syncMixPreset(card) {
   const { muted, soloed } = currentMixState(card);
-  const mutedValue = muted.join(",");
-  $$('[data-mix-preset]', card).forEach((button) => {
-    button.classList.toggle("active", !soloed.length && button.dataset.mixPreset.split(",").filter(Boolean).sort().join(",") === mutedValue);
-  });
-  const drums = $('[data-stem-action="drums"]', card);
-  if (drums) {
-    const removed = muted.includes("drums");
-    drums.classList.toggle("active", removed);
-    drums.textContent = removed ? "Restore drums" : "Remove drums";
-    drums.setAttribute("aria-pressed", String(removed));
-  }
-  const soloDrums = $('[data-stem-solo-action="drums"]', card);
-  if (soloDrums) {
-    const active = soloed.includes("drums");
-    soloDrums.classList.toggle("active", active);
-    soloDrums.textContent = active ? "Unsolo drums" : "Solo drums";
-    soloDrums.setAttribute("aria-pressed", String(active));
-  }
+  const reset = $(".reset-mix", card);
+  if (reset) reset.disabled = !muted.length && !soloed.length;
 }
 
 function linkedMixState(available) {
@@ -1064,18 +1021,37 @@ function syncMixUrl(card) {
 
 function scheduleCustomMix(jobId, model, card) {
   window.clearTimeout(card._mixTimer);
-  $(".phase-detail", card).textContent = "Mix selection changed — rebuilding…";
+  card._mixRevision = (card._mixRevision || 0) + 1;
+  const message = pendingMixMessage(card);
+  setMixStatus(card, message, true);
+  $(".phase-detail", card).textContent = message;
   card._mixTimer = window.setTimeout(() => buildCustomMix(jobId, model, card), 250);
+}
+
+function pendingMixMessage(card) {
+  const { muted, soloed } = currentMixState(card);
+  if (soloed.length) return `Loading ${soloed.join(" + ")} solo…`;
+  if (muted.length) return `Loading mix · muted: ${muted.join(", ")}…`;
+  return "Loading full mix…";
+}
+
+function setMixStatus(card, message, loading = false) {
+  const status = $(".mix-status", card);
+  if (!status) return;
+  status.classList.toggle("loading", loading);
+  $("strong", status).textContent = message;
 }
 
 async function buildCustomMix(jobId, model, card) {
   const build = $(".build-mix", card);
   const { excluded, soloed } = currentMixState(card);
+  const revision = card._mixRevision || 0;
   if (card.dataset.mixBusy === "true") {
     card.dataset.mixPending = "true";
     return;
   }
   card.dataset.mixBusy = "true";
+  setMixStatus(card, pendingMixMessage(card), true);
   build.disabled = true;
   build.textContent = "Building mix…";
   $(".phase-detail", card).textContent = soloed.length
@@ -1114,8 +1090,17 @@ async function buildCustomMix(jobId, model, card) {
     $(".phase-detail", card).textContent = mix.excluded.length
       ? `Removed: ${mix.excluded.join(", ")}`
       : "All stems included";
+    if (revision === (card._mixRevision || 0)) {
+      const ready = soloed.length
+        ? `${soloed.join(" + ")} solo ready`
+        : excluded.length
+          ? `Mix ready · muted: ${excluded.join(", ")}`
+          : "Full mix ready";
+      setMixStatus(card, ready);
+    }
     toast(`${model === "scnet" ? "SCNet" : "RoFormer"} mix updated`);
   } catch (error) {
+    if (revision === (card._mixRevision || 0)) setMixStatus(card, "Mix update failed");
     toast(error.message);
   } finally {
     card.dataset.mixBusy = "false";
