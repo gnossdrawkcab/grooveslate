@@ -131,6 +131,11 @@ NON_ORIGINAL_RESULT_TERMS = (
     "[cover",
     "live at",
     "live from",
+    " live @",
+    " | live",
+    " - live",
+    " live in ",
+    " live on ",
     "(live",
     "[live",
     "concert",
@@ -144,6 +149,8 @@ NON_ORIGINAL_RESULT_TERMS = (
     "sped up",
     "nightcore",
     "performance",
+    " performs ",
+    " performing ",
     "session version",
 )
 
@@ -233,13 +240,6 @@ def youtube_challenge_hand(genre: str, excluded: set[str] | None = None) -> list
         # The exact-song bag has genuinely cycled; begin it again.
         return youtube_challenge_hand(genre)
     return sorted(hand, key=lambda _: randbelow(1_000_000))
-
-
-def youtube_genre_explore_query(genre: str) -> str:
-    if genre not in GENRE_LABELS:
-        raise KeyError(genre)
-    decade = choice(("1960s", "1970s", "1980s", "1990s", "2000s", "2010s", "2020s"))
-    return f"{GENRE_LABELS[genre]} {decade} studio song official audio"
 
 
 def is_original_song_result(result: dict) -> bool:

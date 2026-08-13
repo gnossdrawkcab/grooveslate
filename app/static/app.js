@@ -15,6 +15,7 @@ const state = {
   challengeDraw: null,
   challengeHand: null,
   challengeSeen: {},
+  challengeDrawSerial: 0,
   selectedChallengeGenre: null,
   activeChallenge: null,
   community: [],
@@ -367,15 +368,24 @@ function selectChallengeGenre(genre) {
   state.challengeDraw = null;
   state.challengeHand = null;
   $("#challenge-card").classList.add("hidden");
+  $(".genre-choice").classList.remove("hidden");
   renderChallengeGenres();
 }
 
 async function drawChallenge(genre) {
+  const serial = ++state.challengeDrawSerial;
   state.selectedChallengeGenre = genre;
   renderChallengeGenres();
   $$('[data-challenge-genre]').forEach((button) => { button.disabled = true; });
+  $("#draw-selected-genre").disabled = true;
+  $("#surprise-challenge").disabled = true;
+  $("#redraw-challenge").disabled = true;
+  $("#accept-challenge").disabled = true;
+  $("#challenge-card").classList.add("loading");
+  const priorRerollLabel = $("#redraw-challenge").textContent;
+  $("#redraw-challenge").textContent = "Dealing 5…";
   try {
-    state.challengeHand = await api("/api/challenges/draw", {
+    const hand = await api("/api/challenges/draw", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify({
@@ -384,6 +394,8 @@ async function drawChallenge(genre) {
         exclude: state.challengeSeen[genre] || [],
       }),
     });
+    if (serial !== state.challengeDrawSerial) return;
+    state.challengeHand = hand;
     const seen = new Set(state.challengeSeen[genre] || []);
     state.challengeHand.options.forEach((option) => {
       if (option.shuffle_key) seen.add(option.shuffle_key);
@@ -416,11 +428,23 @@ async function drawChallenge(genre) {
       $("#accept-challenge").disabled = false;
     }));
     $("#challenge-card").classList.remove("hidden");
+    $(".genre-choice").classList.add("hidden");
     $("#redraw-challenge").dataset.genre = genre;
     $("#redraw-challenge").textContent = "↻ Reroll 5";
     $("#accept-challenge").disabled = true;
-  } catch (error) { toast(error.message); }
-  finally { renderChallengeGenres(); }
+  } catch (error) {
+    if (serial === state.challengeDrawSerial) {
+      $("#redraw-challenge").textContent = priorRerollLabel;
+      toast(error.message);
+    }
+  } finally {
+    if (serial === state.challengeDrawSerial) {
+      $("#challenge-card").classList.remove("loading");
+      $("#surprise-challenge").disabled = false;
+      $("#redraw-challenge").disabled = false;
+      renderChallengeGenres();
+    }
+  }
 }
 
 async function acceptChallenge() {
@@ -1424,6 +1448,7 @@ $("#open-challenge").addEventListener("click", async () => {
 $("#close-challenge").addEventListener("click", () => $("#challenge-drawer").classList.add("hidden"));
 $("#challenge-pool").addEventListener("change", () => {
   $("#challenge-card").classList.add("hidden");
+  $(".genre-choice").classList.remove("hidden");
   state.challengeDraw = null;
   renderChallengeGenres();
 });
