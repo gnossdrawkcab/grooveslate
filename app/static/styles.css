@@ -193,6 +193,39 @@ main { padding: 0 3.4vw 60px; }
 .practice-row .practice-stats span, .practice-row .practice-stats strong { padding: 4px 5px; font-size: 6px; }
 .practice-row audio { width: 100%; height: 34px; color-scheme: dark; }
 .practice-row .open-practice { grid-column: auto; min-height: 34px; padding: 0 9px; }
+.youtube-section, .community-section { padding-top: 34px; }
+.youtube-search { height: 48px; display: grid; grid-template-columns: 48px 1fr auto; margin: 16px 0 10px; border: 1px solid var(--line); background: var(--paper-2); }
+.youtube-search > span { display: grid; place-items: center; color: #ff4e45; }
+.youtube-search input { min-width: 0; border: 0; background: transparent; color: var(--ink); outline: 0; }
+.youtube-search button { border: 0; padding: 0 18px; background: #ff4e45; color: white; font-weight: 700; cursor: pointer; }
+.youtube-results { display: grid; grid-template-columns: repeat(4, 1fr); gap: 7px; }
+.youtube-results > p { grid-column: 1 / -1; margin: 0; padding: 17px; border: 1px dashed var(--line); color: var(--muted); font-size: 10px; }
+.youtube-result { min-width: 0; display: grid; grid-template-columns: 92px minmax(0, 1fr); gap: 9px; padding: 8px; border: 1px solid var(--line); background: var(--paper-2); }
+.youtube-result > a { position: relative; width: 92px; height: 52px; overflow: hidden; }
+.youtube-result img { width: 100%; height: 100%; object-fit: cover; }
+.youtube-result a i { position: absolute; inset: 0; display: grid; place-items: center; color: white; font-style: normal; text-shadow: 0 2px 7px black; }
+.youtube-result > div { min-width: 0; align-self: center; }
+.youtube-result strong, .youtube-result small { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.youtube-result strong { font-size: 9px; }
+.youtube-result small { margin-top: 4px; color: var(--muted); font: 6px var(--mono); }
+.youtube-result > button { grid-column: 1 / -1; min-height: 34px; border: 1px solid #ff4e45; background: transparent; color: var(--ink); font: 7px var(--mono); cursor: pointer; }
+.youtube-result > button:hover { background: #ff4e45; color: white; }
+.community-takes { margin-top: 16px; border-top: 1px solid var(--line); }
+.community-empty { padding: 22px 10px; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; }
+.community-take { min-height: 66px; display: grid; grid-template-columns: 130px minmax(170px, 1fr) minmax(220px, .75fr) 82px auto; align-items: center; gap: 13px; padding: 9px 7px; border-bottom: 1px solid var(--line); }
+.community-person { min-width: 0; display: flex; align-items: center; gap: 9px; }
+.community-person > span { width: 34px; height: 34px; display: grid; place-items: center; border-radius: 50%; background: var(--orange); color: white; font-weight: 700; }
+.community-person strong, .community-person small, .community-song strong, .community-song small { display: block; overflow: hidden; white-space: nowrap; text-overflow: ellipsis; }
+.community-person strong, .community-song strong { font-size: 10px; }
+.community-person small, .community-song small { margin-top: 3px; color: var(--muted); font: 6px var(--mono); }
+.community-take audio { width: 100%; height: 34px; color-scheme: dark; }
+.groove-score span { display: block; color: var(--lime); font: 20px var(--mono); }
+.groove-score small { display: block; color: var(--muted); font: 5px var(--mono); white-space: nowrap; }
+.score-buttons { display: flex; gap: 3px; }
+.score-buttons button, .unpublish-take { min-width: 29px; height: 32px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 7px var(--mono); cursor: pointer; }
+.score-buttons button:hover, .score-buttons button.active { border-color: var(--lime); background: var(--lime); color: var(--dark); }
+.unpublish-take { padding: 0 9px; }
+.take-actions .published-take { border-color: var(--lime); color: var(--lime); }
 .shared-song .practice-home { display: none; }
 .home-page:not(.studio-open) .workspace { display: none; }
 .eyebrow { margin: 0 0 23px; font: 500 10px var(--mono); letter-spacing: .16em; color: var(--orange); }
@@ -447,6 +480,9 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .record-console > div { display: flex; flex-direction: column; gap: 4px; }
 .record-console strong { font: 20px var(--mono); }
 .record-console span { color: #8d8881; font: 7px var(--mono); }
+.upload-take { margin-left: auto; min-height: 38px; display: grid; place-items: center; padding: 0 12px; border: 1px solid #37332e; color: #f3efe7; cursor: pointer; }
+.upload-take span { color: inherit; }
+.upload-take input { position: absolute; width: 1px; height: 1px; opacity: 0; pointer-events: none; }
 .takes-heading { display: flex; justify-content: space-between; margin: 18px 0 7px; color: var(--muted); font: 7px var(--mono); letter-spacing: .1em; }
 .takes-list { border-top: 1px solid var(--line); }
 .takes-list > p { margin: 0; padding: 20px 0; color: var(--muted); font-size: 10px; }
@@ -520,6 +556,9 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
   .challenge-options { grid-template-columns: 1fr; }
   .genre-grid { grid-template-columns: repeat(3, 1fr); }
   .challenge-card { grid-template-columns: 44px 1fr; }
+  .youtube-results { grid-template-columns: 1fr 1fr; }
+  .community-take { grid-template-columns: 120px 1fr auto; }
+  .community-take audio { grid-column: 1 / 3; }
   .challenge-rule, .challenge-card-actions { grid-column: 2; }
   .workspace { grid-template-columns: 1fr; }
   .library-panel { border-right: 0; padding-right: 0; }
@@ -571,6 +610,14 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
   .challenge-bolt { width: 36px; height: 36px; }
   .challenge-rule, .challenge-card-actions { grid-column: 1 / -1; }
   .challenge-rule { padding: 11px 0 0; border-left: 0; border-top: 1px solid #37332e; }
+  .youtube-results { grid-template-columns: 1fr; }
+  .youtube-search { height: auto; grid-template-columns: 42px 1fr; }
+  .youtube-search input { height: 48px; }
+  .youtube-search button { grid-column: 1 / -1; min-height: 44px; }
+  .community-take { grid-template-columns: 1fr auto; gap: 9px; }
+  .community-song { grid-column: 1 / -1; }
+  .community-take audio { grid-column: 1 / -1; }
+  .groove-score { grid-column: 1; }
   .practice-row { grid-template-columns: 34px minmax(0, 1fr) 62px; gap: 8px; padding: 8px 5px; }
   .practice-row .practice-number, .practice-row .practice-stats { display: none; }
   .practice-row .practice-art { width: 34px; height: 34px; }
@@ -639,6 +686,7 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
   .take-details { grid-template-columns: 1fr; }
   .record-console { align-items: stretch; flex-direction: column; }
   .record-button { width: 100%; justify-content: center; }
+  .upload-take { width: 100%; margin: 0; min-height: 44px; }
   .take-row { grid-template-columns: 32px minmax(0, 1fr) auto; }
   .take-row audio { grid-column: 2 / -1; height: 38px; }
   .performance-detail { grid-column: 1 / -1; }

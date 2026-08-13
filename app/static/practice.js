@@ -232,7 +232,7 @@
         <button class="best-take ${take.best ? "active" : ""}" data-best-take="${take.id}" type="button" title="${take.best ? "Best take" : "Mark as best take"}">★</button>
         <div class="take-copy"><strong>${app.escapeHtml(take.name)}</strong><small>${new Date(take.created_at).toLocaleString()}${take.notes ? ` · ${app.escapeHtml(take.notes)}` : ""}</small>${analysis ? `<span class="take-score"><b>${analysis.pocket_score}</b> POCKET${delta === null ? "" : ` · ${delta >= 0 ? "+" : ""}${delta} VS PRIOR`}${analysis.pocket_score === bestScore ? " · TOP SCORE" : ""}</span>` : ""}</div>
         <audio controls preload="metadata" src="${app.escapeHtml(take.audio_url)}"></audio>
-        <div class="take-actions">${take.midi_url ? `<a href="${app.escapeHtml(take.midi_url)}" title="Download editable MIDI">MIDI</a>` : ""}<a href="${app.escapeHtml(take.download_url)}" title="Download take">AUDIO</a><button data-delete-take="${take.id}" type="button" title="Delete take">×</button></div>
+        <div class="take-actions">${take.publication ? `<button class="published-take" data-unpublish-take="${take.publication.id}" type="button" title="Published to Community Takes; click to make private">PUBLIC</button>` : `<button data-publish-take="${take.id}" type="button" title="Publish this take for other signed-in drummers to score">PUBLISH</button>`}${take.midi_url ? `<a href="${app.escapeHtml(take.midi_url)}" title="Download editable MIDI">MIDI</a>` : ""}<a href="${app.escapeHtml(take.download_url)}" title="Download take">AUDIO</a><button data-delete-take="${take.id}" type="button" title="Delete take">×</button></div>
         ${analysis ? `<details class="performance-detail"><summary>Performance map &amp; section analysis <span>${analysis.hit_count} hits · ${analysis.mean_offset_ms}ms mean grid offset</span></summary><canvas class="take-performance-map" data-take-map="${take.id}" tabindex="0" aria-label="Waveform-aligned MIDI hits"></canvas><div class="performance-stats"><span><b>${analysis.velocity.average ?? "—"}</b> AVG VELOCITY</span><span><b>${analysis.velocity.dynamic_range ?? "—"}</b> DYNAMIC RANGE</span><span><b>${analysis.hit_count}</b> MIDI HITS</span><span><b>${analysis.bpm}</b> ANALYSIS BPM</span></div><div class="section-scores">${analysis.sections.map((section) => `<span><b>${app.escapeHtml(section.label)}</b><i>${section.hits} hits</i><strong>${section.pocket_score ?? "—"}</strong></span>`).join("")}</div><p class="analysis-note">Pocket measures consistency against the nearest 1/16-note grid at your configured BPM. It does not judge musical choices.</p></details>` : ""}
       </article>`;
     }).join("");
@@ -241,6 +241,8 @@
       $$(".take-row audio", list).forEach((other) => { if (other !== player) other.pause(); });
     }));
     $$('[data-best-take]', list).forEach((button) => button.addEventListener("click", () => updateTake(button.dataset.bestTake, { best: true })));
+    $$('[data-publish-take]', list).forEach((button) => button.addEventListener("click", () => publishTake(button.dataset.publishTake)));
+    $$('[data-unpublish-take]', list).forEach((button) => button.addEventListener("click", () => unpublishTake(button.dataset.unpublishTake)));
     $$('[data-delete-take]', list).forEach((button) => button.addEventListener("click", async () => {
       if (!window.confirm("Delete this recorded take?")) return;
       try {
@@ -251,6 +253,24 @@
     }));
     $$('[data-take-map]', list).forEach((canvas) => loadTakePerformance(canvas));
     app.updateChallengeProgress?.(practiceState.session);
+  }
+
+  async function publishTake(takeId) {
+    if (!window.confirm("Publish this finished take to Community Takes? Other signed-in users will be able to hear and score it.")) return;
+    try {
+      await app.api(`/api/jobs/${practiceState.job.id}/practice/takes/${takeId}/publish`, { method: "POST" });
+      practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice`);
+      renderTakes(); app.refreshCommunity?.(); app.toast("Take published — scoring is now open");
+    } catch (error) { app.toast(error.message); }
+  }
+
+  async function unpublishTake(publicationId) {
+    if (!window.confirm("Make this take private again? Existing scores will be removed.")) return;
+    try {
+      await app.api(`/api/community/${publicationId}`, { method: "DELETE" });
+      practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice`);
+      renderTakes(); app.refreshCommunity?.(); app.toast("Take is private again");
+    } catch (error) { app.toast(error.message); }
   }
 
   async function loadTakePerformance(canvas) {
@@ -780,6 +800,26 @@
     }
   }
 
+  async function uploadExistingTake(file) {
+    if (!file) return;
+    const form = new FormData();
+    form.append("file", file, file.name);
+    form.append("name", $("#take-name").value.trim() || file.name.replace(/\.[^.]+$/, ""));
+    form.append("notes", $("#take-notes").value.trim());
+    form.append("duration", "0");
+    form.append("midi_events", "[]");
+    $("#record-status").textContent = `Uploading ${file.name}…`;
+    try {
+      practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice/takes`, { method: "POST", body: form });
+      renderTakes(); app.refreshPracticeLibrary();
+      $("#take-name").value = ""; $("#take-notes").value = "";
+      $("#record-status").textContent = "Uploaded take saved privately";
+      app.toast("Take uploaded — publish it when you are ready for scores");
+    } catch (error) {
+      $("#record-status").textContent = "Take upload failed"; app.toast(error.message);
+    } finally { $("#take-upload").value = ""; }
+  }
+
   $$("[data-workbench]").forEach((button) => button.addEventListener("click", () => setPanel(button.dataset.workbench)));
   $$("[data-next-workbench]").forEach((button) => button.addEventListener("click", () => setPanel(button.dataset.nextWorkbench)));
   $$("[data-marker-kind]").forEach((button) => button.addEventListener("click", () => addMarker(button.dataset.markerLabel, button.dataset.markerKind)));
@@ -819,6 +859,7 @@
   $("#connect-midi").addEventListener("click", () => connectMidi().catch((error) => app.toast(error.message)));
   $$("[data-drum-note]").forEach((button) => button.addEventListener("pointerdown", () => triggerPad(Number(button.dataset.drumNote)).catch((error) => app.toast(error.message))));
   $("#record-take").addEventListener("click", recordTake);
+  $("#take-upload").addEventListener("change", (event) => uploadExistingTake(event.target.files[0]));
   $("#song-map").addEventListener("pointerdown", (event) => {
     if (event.target.closest(".song-map-marker") || !practiceState.audio) return;
     const map = event.currentTarget;

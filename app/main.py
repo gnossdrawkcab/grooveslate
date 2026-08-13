@@ -19,6 +19,7 @@ from pydantic import BaseModel, Field
 
 from .config import Settings
 from .challenges import draw_challenge, draw_track, genre_options
+from .community import CommunityStore
 from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
 from .library import MusicLibrary
@@ -69,6 +70,10 @@ class ChallengeDraw(BaseModel):
     ready_only: bool = False
 
 
+class CommunityScore(BaseModel):
+    score: int = Field(ge=1, le=5)
+
+
 def slugify_title(title: str) -> str:
     normalized = unicodedata.normalize("NFKD", title)
     separated = re.sub(r"[^A-Za-z0-9]+", "-", normalized)
@@ -104,6 +109,7 @@ def create_app(
     )
     store = JobStore(config.data_root / "jobs")
     practice = PracticeStore(config.data_root / "practice")
+    community = CommunityStore(config.data_root / "community")
     imports = ImportService(config, library)
     processor = Processor(config, library, store)
 
@@ -117,6 +123,7 @@ def create_app(
     app.state.library = library
     app.state.store = store
     app.state.practice = practice
+    app.state.community = community
     app.state.imports = imports
     failed_logins: dict[str, list[float]] = {}
     session_secret = config.session_secret or f"drumless:{config.app_password}"
@@ -379,6 +386,10 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
 
     def practice_response(user: str, job_id: str, session: dict | None = None) -> dict:
         data = session or practice.get(user, job_id)
+        publications = {
+            item["take_id"]: item for item in community.list(user)
+            if item["owned"] and item["job_id"] == job_id
+        }
         data["takes"] = [
             {
                 **take,
@@ -388,10 +399,57 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
                              if take.get("midi_filename") else None),
                 "events_url": (f"/api/jobs/{job_id}/practice/takes/{take['id']}/events"
                                if take.get("midi_filename") else None),
+                "publication": publications.get(take["id"]),
             }
             for take in data.get("takes", [])
         ]
         return data
+
+    @app.get("/api/community")
+    def list_community_takes(request: Request) -> dict:
+        items = community.list(request.state.user)
+        return {
+            "takes": [
+                {**item, "audio_url": f"/api/community/{item['id']}/audio"}
+                for item in items
+            ]
+        }
+
+    @app.post("/api/jobs/{job_id}/practice/takes/{take_id}/publish", status_code=201)
+    def publish_practice_take(job_id: str, take_id: str, request: Request) -> dict:
+        try:
+            job = owned_job(job_id, request.state.user)
+            _, take = practice.take_path(request.state.user, job_id, take_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Take not found") from None
+        publication = community.publish(request.state.user, job, take)
+        return {**publication, "audio_url": f"/api/community/{publication['id']}/audio"}
+
+    @app.delete("/api/community/{publication_id}")
+    def unpublish_practice_take(publication_id: str, request: Request) -> dict:
+        try:
+            community.unpublish(request.state.user, publication_id)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Published take not found") from None
+        return {"deleted": True}
+
+    @app.put("/api/community/{publication_id}/score")
+    def score_community_take(publication_id: str, payload: CommunityScore, request: Request) -> dict:
+        try:
+            return community.score(request.state.user, publication_id, payload.score)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Published take not found") from None
+        except PermissionError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
+
+    @app.get("/api/community/{publication_id}/audio")
+    def stream_community_take(publication_id: str):
+        try:
+            publication = community.get(publication_id)
+            path, take = practice.take_path(publication["owner"], publication["job_id"], publication["take_id"])
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Published take unavailable") from None
+        return FileResponse(path, media_type=take["mime_type"])
 
     @app.get("/api/jobs")
     def list_jobs(request: Request, limit: int = Query(default=12, ge=1, le=50)) -> dict:
@@ -515,6 +573,10 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             "video/mp4": ".mp4",
             "audio/ogg": ".ogg",
             "audio/wav": ".wav",
+            "audio/x-wav": ".wav",
+            "audio/mpeg": ".mp3",
+            "audio/flac": ".flac",
+            "audio/aac": ".aac",
         }
         suffix = suffixes.get(mime_type)
         if suffix is None:
@@ -580,6 +642,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
     def delete_practice_take(job_id: str, take_id: str, request: Request) -> dict:
         try:
             owned_job(job_id, request.state.user)
+            community.remove_take(request.state.user, job_id, take_id)
             session = practice.delete_take(request.state.user, job_id, take_id)
         except KeyError:
             raise HTTPException(status_code=404, detail="Take not found") from None

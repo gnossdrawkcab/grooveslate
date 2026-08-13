@@ -76,6 +76,19 @@ measurable mission. Missions cover pocket score, dynamics, charting, one-take
 commitment, and improving a second take; progress follows the player into the
 song workbench.
 
+## YouTube and Community Takes
+
+When the optional media extractor is enabled, the home page includes first-class
+YouTube discovery with thumbnails, an external preview link, and one-click
+import into the existing separation queue. Library results remain available in
+the combined search, and imported songs stay private to the requesting user.
+
+Takes can be recorded in the browser or uploaded from a phone, drum module, or
+DAW and are private by default. A drummer may explicitly publish one to
+Community Takes, where other signed-in users can listen and leave a replaceable
+1–5 Groove score. Owners cannot score their own takes and can unpublish without
+deleting their private recording; unpublishing also removes prior scores.
+
 ## Importing audio
 
 The Import tab always accepts supported audio uploads and direct public audio

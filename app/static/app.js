@@ -14,6 +14,8 @@ const state = {
   challengeGenres: null,
   challengeDraw: null,
   activeChallenge: null,
+  community: [],
+  youtubeResults: [],
 };
 
 const $ = (selector, root = document) => root.querySelector(selector);
@@ -142,6 +144,83 @@ function renderHomePractice() {
   $$(".open-practice", grid).forEach((button) => {
     button.addEventListener("click", () => openPracticeSession(button.dataset.jobId));
   });
+}
+
+function renderCommunity() {
+  const list = $("#community-takes");
+  $("#community-summary").textContent = `${state.community.length} shared performance${state.community.length === 1 ? "" : "s"} · opt-in only`;
+  if (!state.community.length) {
+    list.innerHTML = '<div class="community-empty">Record a take, then choose “Publish” to share it here. Private takes stay private.</div>';
+    return;
+  }
+  list.innerHTML = state.community.map((take) => `
+    <article class="community-take">
+      <div class="community-person"><span>${escapeHtml(take.owner.slice(0, 1).toUpperCase())}</span><div><strong>${escapeHtml(take.owner)}</strong><small>${new Date(take.published_at).toLocaleDateString()}</small></div></div>
+      <div class="community-song"><strong>${escapeHtml(take.song_title)}</strong><small>${escapeHtml(take.song_artist || "GrooveSlate performance")} · ${escapeHtml(take.take_name)}</small></div>
+      <audio controls preload="metadata" src="${escapeHtml(take.audio_url)}"></audio>
+      <div class="groove-score"><span>${take.score ?? "—"}</span><small>GROOVE · ${take.score_count} VOTE${take.score_count === 1 ? "" : "S"}</small></div>
+      ${take.owned ? `<button class="unpublish-take" data-unpublish="${take.id}" type="button">Unpublish</button>` : `<div class="score-buttons" aria-label="Score ${escapeHtml(take.owner)}'s take">${[1,2,3,4,5].map((score) => `<button class="${take.your_score === score ? "active" : ""}" data-score-publication="${take.id}" data-score="${score}" type="button" title="${score} out of 5">${score}</button>`).join("")}</div>`}
+    </article>`).join("");
+  $$(".community-take audio", list).forEach((audio) => audio.addEventListener("play", () => {
+    $$("audio").forEach((other) => { if (other !== audio) other.pause(); });
+  }));
+  $$('[data-score-publication]', list).forEach((button) => button.addEventListener("click", () => scoreCommunityTake(button.dataset.scorePublication, Number(button.dataset.score))));
+  $$('[data-unpublish]', list).forEach((button) => button.addEventListener("click", () => unpublishCommunityTake(button.dataset.unpublish)));
+}
+
+async function loadCommunity() {
+  try {
+    state.community = (await api("/api/community")).takes;
+    renderCommunity();
+  } catch (error) { $("#community-summary").textContent = error.message; }
+}
+
+async function scoreCommunityTake(id, score) {
+  try {
+    await api(`/api/community/${id}/score`, { method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ score }) });
+    await loadCommunity(); toast(`Groove score saved: ${score}/5`);
+  } catch (error) { toast(error.message); }
+}
+
+async function unpublishCommunityTake(id) {
+  if (!window.confirm("Remove this take from Community Takes? Your private recording will remain saved.")) return;
+  try {
+    await api(`/api/community/${id}`, { method: "DELETE" });
+    await loadCommunity(); toast("Take is private again");
+  } catch (error) { toast(error.message); }
+}
+
+function renderYoutubeHome() {
+  const list = $("#youtube-home-results");
+  if (!state.youtubeResults.length) {
+    list.innerHTML = "<p>No results yet. Search by song, artist, or a specific live version.</p>";
+    return;
+  }
+  list.innerHTML = state.youtubeResults.map((item) => `
+    <article class="youtube-result">
+      <a href="${escapeHtml(item.url)}" target="_blank" rel="noopener" title="Preview on YouTube"><img src="${escapeHtml(item.thumbnail_url)}" alt="" loading="lazy" /><i>▶</i></a>
+      <div><strong>${escapeHtml(item.title)}</strong><small>${escapeHtml(item.channel)} · ${formatDuration(item.duration)}</small></div>
+      <button type="button" data-youtube-prepare="${escapeHtml(item.url)}" data-youtube-title="${escapeHtml(item.title)}">Prepare drumless →</button>
+    </article>`).join("");
+  $$('[data-youtube-prepare]', list).forEach((button) => button.addEventListener("click", () => {
+    openStudio("import");
+    importURL(button.dataset.youtubePrepare, button.dataset.youtubeTitle);
+  }));
+}
+
+async function searchYoutubeHome(event) {
+  event.preventDefault();
+  const query = $("#youtube-home-query").value.trim();
+  if (!query) return;
+  const button = $("#youtube-home-search button");
+  button.disabled = true; button.textContent = "Searching…";
+  $("#youtube-home-results").innerHTML = "<p>Searching YouTube…</p>";
+  try {
+    state.youtubeResults = (await api(`/api/imports/search?q=${encodeURIComponent(query)}&limit=8`)).results;
+    renderYoutubeHome();
+  } catch (error) {
+    $("#youtube-home-results").innerHTML = `<p>${escapeHtml(error.message)}</p>`;
+  } finally { button.disabled = false; button.textContent = "Search YouTube"; }
 }
 
 function renderActiveChallenge() {
@@ -989,6 +1068,7 @@ $(".brand").addEventListener("click", (event) => {
 });
 $("#run-button").addEventListener("click", startJob);
 $("#provider-search-form").addEventListener("submit", searchProvider);
+$("#youtube-home-search").addEventListener("submit", searchYoutubeHome);
 $("#home-song-search").addEventListener("submit", (event) => {
   event.preventDefault();
   const query = $("#home-song-search-input").value.trim();
@@ -1049,6 +1129,7 @@ Promise.allSettled([
   loadSession(),
   loadLibrary(),
   loadCompleted(),
+  loadCommunity(),
   loadImportCapabilities(),
   restoreRecentJob(),
 ]);
@@ -1066,5 +1147,6 @@ window.DrumlessApp = {
   getJob: () => state.job,
   getPracticeAudio: () => $(".model-card[data-model=\"roformer\"] audio"),
   refreshPracticeLibrary: loadCompleted,
+  refreshCommunity: loadCommunity,
   updateChallengeProgress,
 };

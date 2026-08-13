@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-5" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-7" />
   </head>
   <body>
     <div class="noise"></div>
@@ -75,6 +75,15 @@
             <p class="practice-loading">Loading your practice sessions…</p>
           </div>
         </div>
+        <section class="youtube-section">
+          <div class="sessions-heading"><div><span>YOUTUBE DISCOVERY</span><h2>Find a play-along song</h2></div><p>Preview on YouTube, then prepare your private drumless copy.</p></div>
+          <form class="youtube-search" id="youtube-home-search"><span>▶</span><input id="youtube-home-query" type="search" placeholder="Search songs, artists, live versions…" required /><button type="submit">Search YouTube</button></form>
+          <div class="youtube-results" id="youtube-home-results"><p>Search YouTube without leaving your practice library.</p></div>
+        </section>
+        <section class="community-section">
+          <div class="sessions-heading"><div><span>COMMUNITY TAKES</span><h2>Listen. Score. Encourage.</h2></div><p id="community-summary">Loading published performances…</p></div>
+          <div class="community-takes" id="community-takes"><p>No published takes yet.</p></div>
+        </section>
       </section>
 
       <section class="workspace" id="studio">
@@ -288,6 +297,7 @@
                   <div class="record-console">
                     <button class="record-button" id="record-take" type="button"><i></i><span>Record full take</span></button>
                     <div><strong id="record-clock">0:00</strong><span id="record-status">Ready when you are</span></div>
+                    <label class="upload-take"><span>↑ Upload an existing take</span><input id="take-upload" type="file" accept="audio/*,.webm,.mp3,.wav,.m4a,.ogg" /></label>
                   </div>
                   <div class="takes-heading"><span>SAVED TAKES</span><b id="takes-count">0</b></div>
                   <div class="takes-list" id="takes-list"><p>No takes yet. The first one does not need to be perfect.</p></div>
@@ -323,7 +333,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-5" defer></script>
-    <script src="/practice.js?v=20260813-5" defer></script>
+    <script src="/app.js?v=20260813-7" defer></script>
+    <script src="/practice.js?v=20260813-7" defer></script>
   </body>
 </html>

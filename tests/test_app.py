@@ -247,6 +247,17 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         assert midi.content.startswith(b"MThd")
         assert b"MTrk" in midi.content
 
+        published = client.post(
+            f"/api/jobs/{job['id']}/practice/takes/{take['id']}/publish"
+        )
+        assert published.status_code == 201
+        publication = published.json()
+        assert publication["owned"] is True
+        assert client.get(publication["audio_url"]).content == b"recording" * 64
+        assert client.put(
+            f"/api/community/{publication['id']}/score", json={"score": 5}
+        ).status_code == 400
+
         marked = client.patch(
             f"/api/jobs/{job['id']}/practice/takes/{take['id']}",
             json={"best": True, "name": "Keeper"},
@@ -264,6 +275,15 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         assert client.get(f"/api/jobs/{job['id']}/practice").status_code == 404
         assert client.get(take["audio_url"]).status_code == 404
         assert client.get(take["events_url"]).status_code == 404
+        community = client.get("/api/community").json()["takes"]
+        assert community[0]["owner"] == "Pat"
+        assert community[0]["owned"] is False
+        scored = client.put(
+            f"/api/community/{publication['id']}/score", json={"score": 4}
+        )
+        assert scored.status_code == 200
+        assert scored.json()["score"] == 4
+        assert scored.json()["score_count"] == 1
 
 
 def test_unknown_track_is_not_exposed(tmp_path: Path):
