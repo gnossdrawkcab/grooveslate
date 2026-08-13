@@ -1,0 +1,13 @@
+{
+  "name": "GrooveSlate Drum Practice Studio",
+  "short_name": "GrooveSlate",
+  "description": "Draw a song challenge, make a drumless mix, chart the form, and record your take.",
+  "start_url": "/",
+  "scope": "/",
+  "display": "standalone",
+  "background_color": "#0d0c0b",
+  "theme_color": "#11100f",
+  "icons": [
+    { "src": "/logo.svg", "sizes": "any", "type": "image/svg+xml", "purpose": "any maskable" }
+  ]
+}

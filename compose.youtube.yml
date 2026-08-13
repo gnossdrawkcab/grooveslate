@@ -1,0 +1,29 @@
+services:
+  grooveslate:
+    build:
+      context: .
+    container_name: grooveslate
+    restart: unless-stopped
+    ports:
+      - "8097:8095"
+    env_file:
+      - path: ${APP_ENV_FILE:-./app.env}
+        required: false
+    environment:
+      MUSIC_ROOT: /empty-music
+      DATA_ROOT: /data
+      YOUTUBE_ONLY: "1"
+      SCNET_ENABLED: "0"
+      BS_ROFORMER_ENABLED: "1"
+      MEDIA_EXTRACTOR_ENABLED: "1"
+      APP_USERS: ${APP_USERS:-Pat}
+      APP_ADMIN_USERS: ${APP_ADMIN_USERS:-Pat}
+    volumes:
+      - ${DATA_PATH:-./data}:/data
+    deploy:
+      resources:
+        reservations:
+          devices:
+            - driver: nvidia
+              count: 1
+              capabilities: [gpu]

@@ -191,7 +191,10 @@ def test_youtube_only_mode_blocks_private_sources_and_attests_imports(tmp_path: 
     app = create_app(config, start_worker=False)
     monkeypatch.setattr(app.state.imports, "import_url", lambda url, title="": SimpleNamespace(as_dict=lambda: {"id": "yt", "title": title}))
     with TestClient(app) as client:
-        assert client.get("/api/session").json()["source_mode"] == "youtube"
+        session = client.get("/api/session").json()
+        assert session["source_mode"] == "youtube"
+        assert session["user"].startswith("Guest-")
+        assert "grooveslate_guest" in client.cookies
         assert client.get("/api/library").status_code == 404
         assert client.post("/api/imports/upload", files={"file": ("song.mp3", b"audio")}).status_code == 404
         assert client.post("/api/imports/url", json={"url": "https://youtu.be/test"}).status_code == 400
@@ -210,6 +213,14 @@ def test_youtube_challenge_draws_from_search(tmp_path: Path, monkeypatch):
         draw = client.post("/api/challenges/draw", json={"genre": "funk"}).json()
         assert draw["youtube_url"] == "https://youtu.be/video"
         assert draw["track"]["artist"] == "Band"
+
+
+def test_public_youtube_mode_rate_limits_gpu_jobs(tmp_path: Path):
+    app = create_app(replace(settings(tmp_path), youtube_only=True), start_worker=False)
+    with TestClient(app) as client:
+        for _ in range(3):
+            assert client.post("/api/jobs", json={"track_id": "missing"}).status_code == 404
+        assert client.post("/api/jobs", json={"track_id": "missing"}).status_code == 429
 
 
 def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: Path):
@@ -364,6 +375,8 @@ def test_frontend_and_health(tmp_path: Path):
         assert "rights-confirmed" not in homepage.text
         assert 'id="session-studio"' in homepage.text
         assert client.get("/logo.svg").status_code == 200
+        assert client.get("/manifest.webmanifest").status_code == 200
+        assert client.get("/service-worker.js").status_code == 200
         assert client.get("/practice.js").status_code == 200
         assert client.get("/drum-kit/kick.wav").status_code == 200
         assert client.get("/drum-kit/studio/AcousticSnare/HV1.wav").status_code == 200
@@ -371,6 +384,8 @@ def test_frontend_and_health(tmp_path: Path):
         javascript = client.get("/app.js").text
         assert 'api("/api/jobs?limit=1")' not in javascript
         assert "if (songMatch)" in javascript
+        assert "await replaceAudioSource" in javascript
+        assert 'excluded.length === 1 && excluded[0] === "drums"' in javascript
         assert javascript.index("const local = await api(`/api/library") < javascript.index(
             "const remote = await api(`/api/imports/search"
         )

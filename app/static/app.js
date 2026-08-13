@@ -24,6 +24,18 @@ const $$ = (selector, root = document) => [...root.querySelectorAll(selector)];
 const isSongPage = window.location.pathname.startsWith("/songs/") || window.location.pathname.startsWith("/jobs/");
 document.body.classList.add(isSongPage ? "shared-song" : "home-page");
 
+let pendingInstallPrompt = null;
+window.addEventListener("beforeinstallprompt", (event) => {
+  event.preventDefault();
+  pendingInstallPrompt = event;
+  $("#install-app").classList.remove("hidden");
+});
+window.addEventListener("appinstalled", () => {
+  pendingInstallPrompt = null;
+  $("#install-app").classList.add("hidden");
+});
+if ("serviceWorker" in navigator) navigator.serviceWorker.register("/service-worker.js").catch(() => {});
+
 function toast(message) {
   const element = $("#toast");
   element.textContent = message;
@@ -484,6 +496,11 @@ async function loadSession() {
       $("#provider-search-input").placeholder = "Search YouTube";
       $("#selected-path").textContent = "Search YouTube or paste a permitted video URL.";
       $("#source-footer").textContent = "YOUTUBE DISCOVERY · PRIVATE PRACTICE WORKSPACE";
+      $("#home-title").textContent = "Take the challenge";
+      $("#home-intro").textContent = "Draw an unfamiliar song, chart the form, and record your best drum take.";
+      $("#challenge-drawer").classList.remove("hidden");
+      $("#close-challenge").classList.add("hidden");
+      loadChallengeGenres().catch((error) => toast(error.message));
     }
   } catch {
     // The authentication middleware handles expired sessions.
@@ -755,13 +772,20 @@ async function buildCustomMix(jobId, model, card) {
     ? `Removing ${excluded.join(", ")}`
     : "Restoring all separated stems";
   try {
-    const mix = await api(`/api/jobs/${jobId}/mix/${model}`, {
-      method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify({ excluded }),
-    });
+    const stockDrumless = excluded.length === 1 && excluded[0] === "drums"
+      ? state.job?.models?.[model]
+      : null;
+    const mix = stockDrumless?.audio_url ? {
+      audio_url: stockDrumless.audio_url,
+      download_url: stockDrumless.download_url,
+      excluded: ["drums"],
+    } : await api(`/api/jobs/${jobId}/mix/${model}`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ excluded }),
+      });
     const audio = $("audio", card);
-    replaceAudioSource(audio, `${mix.audio_url}?v=${Date.now()}`);
+    await replaceAudioSource(audio, `${mix.audio_url}?v=${Date.now()}`);
     const download = $(".download", card);
     download.href = mix.download_url;
     download.classList.remove("disabled");
@@ -790,21 +814,26 @@ function replaceAudioSource(audio, source) {
   const volume = audio.volume;
   const muted = audio.muted;
 
-  audio.addEventListener("loadedmetadata", () => {
-    const latestPosition = Number.isFinite(audio.duration)
-      ? Math.min(resumeAt, Math.max(0, audio.duration - 0.05))
-      : resumeAt;
-    audio.currentTime = latestPosition;
-    audio.playbackRate = playbackRate;
-    audio.volume = volume;
-    audio.muted = muted;
-    if (wasPlaying) {
-      audio.play().catch(() => toast("Mix updated — press play to continue"));
-    }
-  }, { once: true });
-
-  audio.src = source;
-  audio.load();
+  return new Promise((resolve) => {
+    const finish = async () => {
+      const latestPosition = Number.isFinite(audio.duration)
+        ? Math.min(resumeAt, Math.max(0, audio.duration - 0.05))
+        : resumeAt;
+      audio.currentTime = latestPosition;
+      audio.playbackRate = playbackRate;
+      audio.volume = volume;
+      audio.muted = muted;
+      if (wasPlaying) {
+        try { await audio.play(); }
+        catch { toast("Mix updated — press play to continue"); }
+      }
+      resolve();
+    };
+    audio.addEventListener("loadedmetadata", finish, { once: true });
+    audio.addEventListener("error", resolve, { once: true });
+    audio.src = source;
+    audio.load();
+  });
 }
 
 function formatTime(seconds) {
@@ -1106,6 +1135,12 @@ $$('[data-home-action]').forEach((button) => {
 $("#theme-toggle").addEventListener("click", () => {
   applyTheme(document.documentElement.dataset.theme === "dark" ? "light" : "dark");
 });
+$("#install-app").addEventListener("click", async () => {
+  if (!pendingInstallPrompt) return;
+  await pendingInstallPrompt.prompt();
+  pendingInstallPrompt = null;
+  $("#install-app").classList.add("hidden");
+});
 $(".brand").addEventListener("click", (event) => {
   if (window.location.pathname !== "/") return;
   event.preventDefault();
@@ -1142,6 +1177,13 @@ $("#challenge-pool").addEventListener("change", () => {
   renderChallengeGenres();
 });
 $("#redraw-challenge").addEventListener("click", (event) => drawChallenge(event.currentTarget.dataset.genre));
+$("#surprise-challenge").addEventListener("click", async () => {
+  try {
+    await loadChallengeGenres();
+    const genres = state.challengeGenres?.genres || [];
+    if (genres.length) await drawChallenge(genres[Math.floor(Math.random() * genres.length)].id);
+  } catch (error) { toast(error.message); }
+});
 $("#accept-challenge").addEventListener("click", acceptChallenge);
 document.addEventListener("keydown", (event) => {
   if ((event.metaKey || event.ctrlKey) && event.key.toLowerCase() === "k") {

@@ -243,6 +243,10 @@ class ImportService:
             raise ValueError("The media provider took too long to respond") from exc
         except subprocess.CalledProcessError as exc:
             detail = (exc.stderr or exc.stdout or "Media extraction failed").strip().splitlines()[-1]
+            if "403" in detail or "forbidden" in detail.casefold():
+                raise ValueError(
+                    "YouTube refused audio access for this video. Try another upload or version of the song."
+                ) from exc
             raise ValueError(detail[-240:]) from exc
 
     def search(self, query: str, limit: int = 10) -> list[dict]:
@@ -294,22 +298,27 @@ class ImportService:
             return existing
         destination_dir = self.root / import_id
         destination_dir.mkdir(parents=True, exist_ok=True)
-        self._yt_dlp(
-            [
-                "--no-playlist",
-                "--ies",
-                "youtube",
-                "--max-filesize",
-                str(self.settings.max_import_bytes),
-                "--extract-audio",
-                "--audio-format",
-                "flac",
-                "--output",
-                str(destination_dir / "download.%(ext)s"),
-                url,
-            ],
-            timeout=min(self.settings.job_timeout_seconds, 1800),
-        )
+        try:
+            self._yt_dlp(
+                [
+                    "--no-playlist",
+                    "--ies",
+                    "youtube",
+                    "--max-filesize",
+                    str(self.settings.max_import_bytes),
+                    "--extract-audio",
+                    "--audio-format",
+                    "flac",
+                    "--output",
+                    str(destination_dir / "download.%(ext)s"),
+                    url,
+                ],
+                timeout=min(self.settings.job_timeout_seconds, 1800),
+            )
+        except Exception:
+            if not any(destination_dir.iterdir()):
+                destination_dir.rmdir()
+            raise
         candidates = [path for path in destination_dir.glob("download.*") if path.suffix != ".part"]
         if not candidates:
             raise ValueError("The extractor did not produce an audio file")

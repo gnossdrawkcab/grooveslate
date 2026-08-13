@@ -8,6 +8,7 @@ import json
 import os
 from pathlib import Path
 import re
+import secrets
 import time
 import unicodedata
 from urllib.parse import parse_qs, quote
@@ -135,7 +136,15 @@ def create_app(
     app.state.song_mapper = song_mapper
     app.state.imports = imports
     failed_logins: dict[str, list[float]] = {}
-    session_secret = config.session_secret or f"drumless:{config.app_password}"
+    public_requests: dict[tuple[str, str], list[float]] = {}
+    if config.youtube_only and not config.session_secret:
+        secret_path = config.data_root / "public-session-secret"
+        if not secret_path.exists():
+            secret_path.write_text(secrets.token_urlsafe(48))
+            secret_path.chmod(0o600)
+        session_secret = secret_path.read_text().strip()
+    else:
+        session_secret = config.session_secret or f"drumless:{config.app_password}"
     users = config.app_users or ("Pat", "Bob")
     users_by_key = {user.casefold(): user for user in users}
     admin_keys = {user.casefold() for user in config.app_admin_users}
@@ -156,13 +165,72 @@ def create_app(
             return None
         return user if hmac.compare_digest(value, session_token(user)) else None
 
+    def guest_token(user: str) -> str:
+        signature = hmac.new(
+            session_secret.encode(),
+            f"grooveslate-guest-v1:{user}".encode(),
+            hashlib.sha256,
+        ).hexdigest()
+        return f"{user}:{signature}"
+
+    def guest_user(value: str) -> str | None:
+        user, separator, _ = value.partition(":")
+        if not separator or not re.fullmatch(r"Guest-[a-f0-9]{8}", user):
+            return None
+        return user if hmac.compare_digest(value, guest_token(user)) else None
+
     @app.middleware("http")
     async def password_gate(request: Request, call_next):
         if request.url.path in {"/login", "/api/health"}:
             return await call_next(request)
+        if config.youtube_only:
+            forwarded = request.headers.get("cf-connecting-ip") or request.headers.get(
+                "x-forwarded-for", ""
+            )
+            client_ip = forwarded.split(",", 1)[0].strip() or (
+                request.client.host if request.client else "unknown"
+            )
+            limits = {
+                ("GET", "/api/imports/search"): (30, 600),
+                ("POST", "/api/challenges/draw"): (30, 600),
+                ("POST", "/api/imports/url"): (5, 3600),
+                ("POST", "/api/jobs"): (3, 3600),
+            }
+            if limit := limits.get((request.method, request.url.path)):
+                maximum, window = limit
+                now = time.monotonic()
+                key = (client_ip, f"{request.method}:{request.url.path}")
+                recent = [
+                    stamp
+                    for stamp in public_requests.get(key, [])
+                    if now - stamp < window
+                ]
+                if len(recent) >= maximum:
+                    return JSONResponse(
+                        {"detail": "Public usage limit reached. Please try again later."},
+                        status_code=429,
+                    )
+                recent.append(now)
+                public_requests[key] = recent
         if not config.app_password:
-            request.state.user = users[0]
-            return await call_next(request)
+            if not config.youtube_only:
+                request.state.user = users[0]
+                return await call_next(request)
+            guest = guest_user(request.cookies.get("grooveslate_guest", ""))
+            if not guest:
+                guest = f"Guest-{secrets.token_hex(4)}"
+            request.state.user = guest
+            response = await call_next(request)
+            if request.cookies.get("grooveslate_guest") != guest_token(guest):
+                response.set_cookie(
+                    "grooveslate_guest",
+                    guest_token(guest),
+                    max_age=60 * 60 * 24 * 365,
+                    httponly=True,
+                    secure=request.headers.get("x-forwarded-proto") == "https",
+                    samesite="lax",
+                )
+            return response
         authenticated = session_user(request.cookies.get("drumless_session", ""))
         if authenticated:
             request.state.user = authenticated

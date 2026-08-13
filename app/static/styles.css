@@ -880,6 +880,12 @@ kbd, .folder-row select, .folder-row span, .search-source-heading,
 .youtube-only .library-panel { grid-template-rows: auto auto auto auto 1fr; }
 .youtube-only .browser-tabs { grid-template-columns: 1fr 1fr; }
 .youtube-only .import-notice { color: var(--orange); font-weight: 700; }
+.surprise-challenge { margin-top: 14px; min-height: 42px; padding: 0 18px; border: 1px solid var(--orange); background: var(--orange); color: white; font-weight: 800; cursor: pointer; }
+.youtube-only .home-command-bar { border-bottom-color: var(--orange); }
+.youtube-only .home-command-bar h1 { font-size: clamp(44px, 6vw, 82px); }
+.youtube-only .challenge-drawer { border-color: color-mix(in srgb, var(--orange) 65%, var(--line)); box-shadow: 0 16px 60px rgba(0, 0, 0, .2); }
+.youtube-only .challenge-action { display: none; }
+.install-app { min-height: 34px; padding: 0 12px; border: 1px solid var(--orange); background: transparent; color: var(--orange); font-weight: 800; cursor: pointer; }
 
 @media screen and (max-width: 620px) {
   body { font-size: 17px; }

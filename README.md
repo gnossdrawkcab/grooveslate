@@ -22,6 +22,31 @@ docker compose up --build
 
 Open `http://localhost:8097`.
 
+For a YouTube-only challenge server with no music-library mount:
+
+```bash
+cp app.env.example app.env
+# Set a strong APP_PASSWORD and APP_SESSION_SECRET in app.env.
+docker compose -f compose.youtube.yml up -d --build
+```
+
+Both modes use the same application source and feature set. The default Compose
+files target an NVIDIA host with the NVIDIA Container Toolkit installed. The
+first image build and model download are large; generated tracks and sessions
+remain in `DATA_PATH`.
+
+## Install as a Windows or Linux app
+
+GrooveSlate is an installable Progressive Web App. Open an HTTPS deployment in
+Chrome or Edge and choose **Install GrooveSlate** from the address bar or browser
+menu. It then launches in its own window and appears in the Windows Start menu
+or Linux application launcher. The installed app still uses the server for GPU
+separation, so one capable self-host can serve phones, tablets, and computers.
+
+For fully local use, run either Compose file with Docker Desktop/WSL 2 on
+Windows or Docker Engine on Linux, then install `http://localhost:8097` as an
+app. NVIDIA GPU passthrough must be configured in the host environment.
+
 Set `MUSIC_PATH` and `DATA_PATH` in your shell or Compose `.env` when those
 directories live outside the project. To use Navidrome's fast catalog, mount
 its data directory and set `NAVIDROME_DB_PATH` to the database path inside the
