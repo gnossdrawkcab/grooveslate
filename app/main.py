@@ -24,6 +24,7 @@ from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
 from .library import MusicLibrary
 from .practice import PracticeStore, analyze_midi, midi_file, sanitize_midi_events
+from .songmap import SongMapper
 
 
 class JobRequest(BaseModel):
@@ -45,6 +46,11 @@ class ChartMarker(BaseModel):
     label: str = Field(min_length=1, max_length=40)
     note: str = Field(default="", max_length=240)
     kind: str = Field(default="section", max_length=24)
+    bar: int | None = Field(default=None, ge=1, le=100_000)
+    bars: int | None = Field(default=None, ge=1, le=10_000)
+    confidence: float | None = Field(default=None, ge=0, le=1)
+    dynamics: str | None = Field(default=None, max_length=16)
+    groove: str | None = Field(default=None, max_length=16)
 
 
 class PracticeSettings(BaseModel):
@@ -112,6 +118,7 @@ def create_app(
     community = CommunityStore(config.data_root / "community")
     imports = ImportService(config, library)
     processor = Processor(config, library, store)
+    song_mapper = SongMapper(config.data_root / "song-maps")
 
     @asynccontextmanager
     async def lifespan(app: FastAPI):
@@ -549,6 +556,26 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             markers,
             payload.settings.model_dump(),
         )
+        return practice_response(request.state.user, job_id, session)
+
+    @app.post("/api/jobs/{job_id}/practice/auto-map")
+    def auto_map_practice(job_id: str, request: Request) -> dict:
+        try:
+            job = owned_job(job_id, request.state.user)
+            prepared = store.root / job_id / "input" / "source.wav"
+            source = prepared if prepared.is_file() else library.path_for(job["track"]["id"])
+            analysis = song_mapper.analyze(source)
+        except KeyError:
+            raise HTTPException(status_code=404, detail="Song not found") from None
+        except (ValueError, RuntimeError, OSError) as exc:
+            raise HTTPException(status_code=422, detail=f"Automatic chart unavailable: {exc}") from None
+        session = practice.get(request.state.user, job_id)
+        session["markers"] = analysis["markers"]
+        session["settings"]["bpm"] = analysis["bpm"]
+        session["auto_map"] = {
+            key: value for key, value in analysis.items() if key != "markers"
+        }
+        session = practice.save(session)
         return practice_response(request.state.user, job_id, session)
 
     @app.post("/api/jobs/{job_id}/practice/takes", status_code=201)

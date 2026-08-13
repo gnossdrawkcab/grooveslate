@@ -420,8 +420,26 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .listen-grid li { display: flex; align-items: center; gap: 11px; padding: 10px 0; border-bottom: 1px solid var(--line); color: var(--muted); font-size: 10px; }
 .listen-grid li b { width: 22px; height: 22px; display: grid; place-items: center; border: 1px solid var(--line); border-radius: 50%; color: var(--orange); font: 7px var(--mono); }
 .workbench-next { width: 100%; min-height: 42px; margin-top: 18px; display: flex; align-items: center; justify-content: space-between; padding: 0 14px; border: 0; background: var(--orange); color: white; font-weight: 600; cursor: pointer; }
-.marker-palette { display: flex; flex-wrap: wrap; gap: 6px; }
-.marker-palette button { min-height: 34px; padding: 0 11px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 8px var(--mono); cursor: pointer; }
+.chart-header { display: flex; align-items: center; justify-content: space-between; gap: 20px; padding-bottom: 15px; border-bottom: 2px solid var(--ink); }
+.chart-header > div > span, .chart-palette-group > span { color: var(--orange); font: 7px var(--mono); letter-spacing: .12em; }
+.chart-header h5 { margin: 5px 0 3px; font-size: 19px; }
+.chart-header p { margin: 0; font-size: 9px; }
+#auto-map-song { min-width: 170px; min-height: 50px; display: grid; grid-template-columns: 28px 1fr; align-items: center; border: 1px solid var(--orange); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+#auto-map-song b { grid-row: 1 / 3; color: var(--orange); font-size: 17px; text-align: center; }
+#auto-map-song span { align-self: end; font-size: 10px; font-weight: 700; }
+#auto-map-song small { align-self: start; color: var(--muted); font: 5px var(--mono); }
+#auto-map-song:disabled { opacity: .55; cursor: wait; }
+.chart-status { display: flex; align-items: center; gap: 6px; margin: 10px 0 14px; }
+.chart-status span { min-width: 70px; padding: 6px 8px; border: 1px solid var(--line); color: var(--muted); font: 6px var(--mono); }
+.chart-status b { color: var(--ink); font-size: 10px; }
+.chart-status em { margin-left: auto; color: var(--muted); font: normal 6px var(--mono); }
+.chart-status.analyzing em { color: var(--orange); }
+.chart-palette-group { margin-top: 10px; }
+.cue-group > span { color: var(--lime); }
+.marker-palette { display: grid; grid-template-columns: repeat(7, 1fr); gap: 4px; margin-top: 5px; }
+.cue-group .marker-palette { grid-template-columns: repeat(8, 1fr); }
+.marker-palette button { min-width: 0; min-height: 42px; padding: 4px 7px; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 7px var(--mono); cursor: pointer; white-space: nowrap; }
+.marker-palette button b { display: block; margin-bottom: 2px; color: var(--ink); font: 11px var(--mono); }
 .marker-palette button:hover { border-color: var(--orange); color: var(--ink); }
 .marker-form { display: grid; grid-template-columns: .7fr 1.3fr auto; gap: 8px; margin: 14px 0; }
 .marker-form > div { min-width: 0; }
@@ -429,12 +447,22 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .marker-form input, .take-details input, .record-routing select, .setting-card select, .tempo-card input { width: 100%; height: 40px; border: 1px solid var(--line); background: var(--paper-2); color: var(--ink); padding: 0 10px; outline: none; font: 10px var(--sans); }
 .marker-form input:focus, .take-details input:focus { border-color: var(--orange); }
 .marker-form > button { align-self: end; height: 40px; border: 0; padding: 0 13px; background: var(--orange); color: white; font: 8px var(--mono); cursor: pointer; }
-.marker-list { max-height: 220px; overflow: auto; border-top: 1px solid var(--line); }
-.marker-row { display: grid; grid-template-columns: 52px 80px minmax(0, 1fr) auto; align-items: center; gap: 8px; min-height: 42px; border-bottom: 1px solid var(--line); font-size: 9px; }
+.marker-list { max-height: 320px; overflow: auto; border: 1px solid var(--line); border-top: 3px solid var(--ink); background: color-mix(in srgb, var(--paper-2) 70%, transparent); }
+.marker-row { display: grid; grid-template-columns: 55px 65px minmax(0, 1fr) 28px auto; align-items: center; gap: 8px; min-height: 52px; padding: 0 7px; border-bottom: 1px solid var(--line); font-size: 9px; }
+.marker-row:nth-child(even) { background: color-mix(in srgb, var(--ink) 2.5%, transparent); }
 .marker-row > button:first-child { border: 0; background: transparent; color: var(--orange); text-align: left; font: 8px var(--mono); cursor: pointer; }
-.marker-kind { color: var(--muted); font: 7px var(--mono); text-transform: uppercase; }
+.marker-row > button:first-child b, .marker-row > button:first-child small { display: block; }
+.marker-row > button:first-child b { font-size: 12px; }
+.marker-row > button:first-child small { margin-top: 2px; color: var(--muted); font-size: 6px; }
+.marker-kind { color: var(--muted); font: 6px var(--mono); text-align: center; text-transform: uppercase; }
+.marker-kind b { display: block; margin-bottom: 2px; color: var(--ink); font-size: 12px; }
 .marker-copy { min-width: 0; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
-.marker-copy small { margin-left: 6px; color: var(--muted); }
+.marker-copy strong, .marker-copy small { display: block; overflow: hidden; text-overflow: ellipsis; }
+.marker-copy strong { font-size: 10px; }
+.marker-copy strong i { margin-left: 5px; color: var(--orange); font: normal 6px var(--mono); }
+.marker-copy small { margin-top: 3px; color: var(--muted); font: 7px var(--mono); }
+.marker-dynamics { color: var(--muted); font: italic 16px Georgia, serif; }
+.marker-dynamics.high { color: var(--orange); }
 .delete-marker { border: 0; background: transparent; color: var(--muted); cursor: pointer; font-size: 15px; }
 .delete-marker:hover { color: var(--orange); }
 .practice-settings-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 8px; }
@@ -464,7 +492,7 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .record-routing { display: grid; grid-template-columns: 1fr 1.4fr .7fr .7fr; align-items: end; gap: 7px; }
 .record-routing button { min-height: 40px; margin: 0; }
 .input-status-row { display: flex; justify-content: space-between; gap: 12px; margin: 9px 0 12px; color: var(--muted); font: 7px var(--mono); }
-.midi-learn { display: grid; grid-template-columns: auto minmax(130px, .7fr) auto auto minmax(180px, 1fr); align-items: center; gap: 6px; margin: -3px 0 12px; padding: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--lime) 4%, transparent); }
+.midi-learn { display: grid; grid-template-columns: auto minmax(120px, .7fr) auto auto auto minmax(150px, 1fr); align-items: center; gap: 6px; margin: -3px 0 12px; padding: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--lime) 4%, transparent); }
 .midi-learn > span { color: var(--lime); font: 7px var(--mono); letter-spacing: .08em; }
 .midi-learn select, .midi-learn button { min-height: 34px; }
 .midi-learn button { border: 1px solid var(--line); background: transparent; color: var(--ink); font: 7px var(--mono); cursor: pointer; }
@@ -680,7 +708,10 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
   .listen-grid { grid-template-columns: 1fr; gap: 18px; }
   .marker-form { grid-template-columns: 1fr; }
   .marker-form > button { min-height: 44px; }
-  .marker-row { grid-template-columns: 45px 56px minmax(0, 1fr) 25px; gap: 5px; }
+  .chart-header { align-items: stretch; flex-direction: column; }
+  #auto-map-song { width: 100%; }
+  .marker-palette, .cue-group .marker-palette { grid-template-columns: repeat(4, 1fr); }
+  .marker-row { grid-template-columns: 45px 48px minmax(0, 1fr) 20px 25px; gap: 5px; }
   .marker-copy small { display: block; margin: 3px 0 0; }
   .practice-settings-grid { grid-template-columns: 1fr 1fr; }
   .practice-launch { grid-template-columns: 1fr; }

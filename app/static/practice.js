@@ -38,6 +38,7 @@
     wakeLock: null,
     midiOverrides: new Map(),
     midiLearnTarget: null,
+    snareCalibration: null,
   };
 
   try {
@@ -134,6 +135,15 @@
       context.fillRect(x, center - height, Math.max(1, barWidth - .5), height * 2);
     }
     context.globalAlpha = 1;
+    const beats = practiceState.session?.auto_map?.beats || [];
+    const duration = practiceState.audio?.duration || practiceState.waveform?.duration;
+    if (beats.length && duration > 0) {
+      beats.forEach((beat, index) => {
+        const x = beat / duration * rect.width;
+        context.fillStyle = index % 4 === 0 ? "rgba(243,239,231,.28)" : "rgba(243,239,231,.08)";
+        context.fillRect(x, index % 4 === 0 ? rect.height - 16 : rect.height - 8, 1, index % 4 === 0 ? 16 : 8);
+      });
+    }
   }
 
   function updateWaveformPlayhead() {
@@ -162,19 +172,31 @@
   function renderMarkers() {
     const list = $("#marker-list");
     const markers = practiceState.session?.markers || [];
+    const bpm = settings().bpm;
+    const duration = practiceState.audio?.duration || practiceState.waveform?.duration || 0;
+    $("#chart-bpm").textContent = bpm;
+    $("#chart-bars").textContent = practiceState.session?.auto_map?.beats?.length
+      ? Math.ceil(practiceState.session.auto_map.beats.length / 4)
+      : duration ? Math.ceil(duration * bpm / 240) : "—";
+    $("#chart-sections").textContent = markers.filter((marker) => ["intro", "verse", "prechorus", "chorus", "bridge", "solo", "outro", "section"].includes(marker.kind)).length;
     if (!markers.length) {
       list.innerHTML = '<div class="empty-library">Play the track and tap a section button when the music changes.</div>';
       renderSongMap();
       app.updateChallengeProgress?.(practiceState.session);
       return;
     }
-    list.innerHTML = markers.map((marker) => `
+    const glyphs = { intro: "IN", verse: "V", prechorus: "PC", chorus: "CH", bridge: "BR", solo: "S", outro: "OUT", section: "§", fill: "↗", hit: "●", stop: "𝄽", push: "&", ride: "R", hat: "HH", halftime: "½", build: "<" };
+    list.innerHTML = markers.map((marker) => {
+      const bar = marker.bar || Math.floor(marker.time * bpm / 240) + 1;
+      return `
       <div class="marker-row" data-marker-row="${app.escapeHtml(marker.id)}">
-        <button type="button" data-seek-marker="${app.escapeHtml(marker.id)}">${app.formatTime(marker.time)}</button>
-        <span class="marker-kind">${app.escapeHtml(marker.kind)}</span>
-        <span class="marker-copy"><strong>${app.escapeHtml(marker.label)}</strong>${marker.note ? `<small>${app.escapeHtml(marker.note)}</small>` : ""}</span>
+        <button type="button" data-seek-marker="${app.escapeHtml(marker.id)}"><b>${String(bar).padStart(3, "0")}</b><small>${app.formatTime(marker.time)}</small></button>
+        <span class="marker-kind"><b>${glyphs[marker.kind] || "•"}</b>${app.escapeHtml(marker.kind)}</span>
+        <span class="marker-copy"><strong>${app.escapeHtml(marker.label)}${marker.bars ? ` <i>${marker.bars} BARS</i>` : ""}</strong>${marker.note ? `<small>${app.escapeHtml(marker.note)}</small>` : ""}</span>
+        <span class="marker-dynamics ${app.escapeHtml(marker.dynamics || "")}">${marker.dynamics === "high" ? "ƒ" : marker.dynamics === "low" ? "p" : marker.dynamics ? "mf" : ""}</span>
         <button class="delete-marker" type="button" data-delete-marker="${app.escapeHtml(marker.id)}" aria-label="Delete ${app.escapeHtml(marker.label)}">×</button>
-      </div>`).join("");
+      </div>`;
+    }).join("");
     $$('[data-seek-marker]', list).forEach((button) => button.addEventListener("click", () => seekToMarker(button.dataset.seekMarker)));
     $$('[data-delete-marker]', list).forEach((button) => button.addEventListener("click", () => {
       practiceState.session.markers = practiceState.session.markers.filter((marker) => marker.id !== button.dataset.deleteMarker);
@@ -207,6 +229,24 @@
     renderMarkers();
     scheduleSave();
     app.toast(`${marker.label} marked at ${app.formatTime(marker.time)}`);
+  }
+
+  async function autoMapSong() {
+    const existing = practiceState.session?.markers?.length || 0;
+    if (existing && !window.confirm("Replace the current chart with an automatically analyzed first draft?")) return;
+    const button = $("#auto-map-song");
+    button.disabled = true; $("span", button).textContent = "Listening to the form…";
+    $("#chart-status").classList.add("analyzing");
+    try {
+      practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice/auto-map`, { method: "POST" });
+      renderSettings(); renderMarkers(); renderSongMap();
+      app.refreshPracticeLibrary();
+      app.toast(`Draft chart built: ${practiceState.session.markers.length} sections at ${settings().bpm} BPM`);
+    } catch (error) { app.toast(error.message); }
+    finally {
+      button.disabled = false; $("span", button).textContent = "Auto-map song";
+      $("#chart-status").classList.remove("analyzing");
+    }
   }
 
   function renderSettings() {
@@ -446,7 +486,10 @@
         "kick-soft": ["AcousticBassDrum/LV1.wav", "AcousticBassDrum/LV2.wav"],
         "kick-mid": ["AcousticBassDrum/MV1.wav", "AcousticBassDrum/MV2.wav"],
         "kick-hard": ["AcousticBassDrum/HV1.wav", "AcousticBassDrum/HV2.wav", "AcousticBassDrum/HV3.wav", "AcousticBassDrum/HV4.wav"],
-        "snare-hard": ["AcousticSnare/HV1.wav", "AcousticSnare/HV2.wav", "AcousticSnare/HV3.wav", "AcousticSnare/HV4.wav", "AcousticSnare/HV5.wav", "AcousticSnare/HV6.wav", "AcousticSnare/HV7.wav"],
+        // HV1 is the exact rock snare heard on the first onscreen-pad hit.
+        // A single source guarantees soft notes are literally quieter versions
+        // of the same recording instead of a different round-robin timbre.
+        "snare-hard": ["AcousticSnare/HV1.wav"],
         rim: ["SideStick/01.wav", "SideStick/02.wav", "SideStick/03.wav", "SideStick/04.wav"],
         "closed-hat": ["ClosedHiHat/01.wav", "ClosedHiHat/02.wav", "ClosedHiHat/03.wav", "ClosedHiHat/04.wav", "ClosedHiHat/05.wav", "ClosedHiHat/06.wav", "ClosedHiHat/07.wav"],
         "pedal-hat": ["PedalHiHat/01.wav"],
@@ -712,6 +755,7 @@
       captureMidi({ kind: "cc", control: note, value: velocity, channel: status & 0x0f });
     }
     if ((status & 0xf0) === 0x90 && velocity > 0) {
+      if (practiceState.snareCalibration) captureSnareCalibration(note);
       if (practiceState.midiLearnTarget) learnMidiNote(note);
       playDrum(note, velocity);
       captureMidi({ kind: "note", note, velocity, channel: status & 0x0f });
@@ -738,6 +782,29 @@
     $("#arm-midi-learn").textContent = "Learn next hit";
     midiMapSummary();
     app.toast(`MIDI note ${note} is now ${instrument}`);
+  }
+
+  function saveMidiMap() {
+    try { localStorage.setItem("grooveslate-midi-map", JSON.stringify(Object.fromEntries(practiceState.midiOverrides))); } catch {}
+    midiMapSummary();
+  }
+
+  function captureSnareCalibration(note) {
+    practiceState.snareCalibration.notes.add(note);
+    practiceState.midiOverrides.set(note, "snare");
+    saveMidiMap();
+    $("#calibrate-snare").textContent = `Listening… notes ${[...practiceState.snareCalibration.notes].join(", ")}`;
+  }
+
+  function finishSnareCalibration() {
+    const calibration = practiceState.snareCalibration;
+    if (!calibration) return;
+    window.clearTimeout(calibration.timer);
+    practiceState.snareCalibration = null;
+    $("#calibrate-snare").classList.remove("active");
+    $("#calibrate-snare").textContent = "Calibrate snare";
+    if (calibration.notes.size) app.toast(`Snare calibrated: MIDI note${calibration.notes.size === 1 ? "" : "s"} ${[...calibration.notes].join(", ")}`);
+    else app.toast("No snare hits received — try calibration again");
   }
 
   function captureMidi(event) {
@@ -865,7 +932,8 @@
 
   $$("[data-workbench]").forEach((button) => button.addEventListener("click", () => setPanel(button.dataset.workbench)));
   $$("[data-next-workbench]").forEach((button) => button.addEventListener("click", () => setPanel(button.dataset.nextWorkbench)));
-  $$("[data-marker-kind]").forEach((button) => button.addEventListener("click", () => addMarker(button.dataset.markerLabel, button.dataset.markerKind)));
+  $$("[data-marker-kind]").forEach((button) => button.addEventListener("click", () => addMarker(button.dataset.markerLabel, button.dataset.markerKind, button.dataset.markerNote || "")));
+  $("#auto-map-song").addEventListener("click", autoMapSong);
   $("#marker-form").addEventListener("submit", (event) => {
     event.preventDefault();
     addMarker($("#marker-label").value, practiceState.markerKind, $("#marker-note").value);
@@ -911,8 +979,18 @@
     $("#arm-midi-learn").classList.add("active");
     $("#arm-midi-learn").textContent = `Hit ${$("#midi-learn-target").selectedOptions[0].textContent} now…`;
   });
+  $("#calibrate-snare").addEventListener("click", () => {
+    if (practiceState.snareCalibration) return finishSnareCalibration();
+    const calibration = { notes: new Set(), timer: null };
+    practiceState.snareCalibration = calibration;
+    calibration.timer = window.setTimeout(finishSnareCalibration, 7000);
+    $("#calibrate-snare").classList.add("active");
+    $("#calibrate-snare").textContent = "Play head soft → loud…";
+    app.toast("For 7 seconds, play only snare-head strokes from soft to loud");
+  });
   $("#reset-midi-map").addEventListener("click", () => {
     practiceState.midiOverrides.clear(); practiceState.midiLearnTarget = null;
+    finishSnareCalibration();
     try { localStorage.removeItem("grooveslate-midi-map"); } catch {}
     $("#arm-midi-learn").classList.remove("active"); $("#arm-midi-learn").textContent = "Learn next hit";
     midiMapSummary(); app.toast("Factory MIDI map restored");

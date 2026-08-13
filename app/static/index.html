@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-8" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-10" />
   </head>
   <body>
     <div class="noise"></div>
@@ -237,18 +237,34 @@
                 </div>
 
                 <div class="workbench-panel" data-workbench-panel="chart">
-                  <div class="marker-palette" aria-label="Quick marker types">
-                    <button data-marker-kind="intro" data-marker-label="Intro" type="button">Intro</button>
-                    <button data-marker-kind="verse" data-marker-label="Verse" type="button">Verse</button>
-                    <button data-marker-kind="chorus" data-marker-label="Chorus" type="button">Chorus</button>
-                    <button data-marker-kind="bridge" data-marker-label="Bridge" type="button">Bridge</button>
-                    <button data-marker-kind="fill" data-marker-label="Fill" type="button">Fill</button>
-                    <button data-marker-kind="hit" data-marker-label="Hit / Stop" type="button">Hit / Stop</button>
+                  <div class="chart-header">
+                    <div><span>DRUMMER’S ROAD MAP · 4/4</span><h5>Form, bars, cues, and orchestration</h5><p>Use rehearsal marks for the form and performance cues for what your hands and feet need to know.</p></div>
+                    <button id="auto-map-song" type="button"><b>✦</b><span>Auto-map song</span><small>BEATS + FORM + ENERGY</small></button>
                   </div>
+                  <div class="chart-status" id="chart-status"><span><b id="chart-bpm">120</b> BPM</span><span><b id="chart-bars">—</b> BARS</span><span><b id="chart-sections">0</b> SECTIONS</span><em>Editable first draft</em></div>
+                  <div class="chart-palette-group"><span>REHEARSAL MARKS</span><div class="marker-palette" aria-label="Song sections">
+                    <button data-marker-kind="intro" data-marker-label="Intro" data-marker-note="Count in · establish texture" type="button"><b>IN</b> Intro</button>
+                    <button data-marker-kind="verse" data-marker-label="Verse" data-marker-note="Pocket · support the vocal" type="button"><b>V</b> Verse</button>
+                    <button data-marker-kind="prechorus" data-marker-label="Pre-Chorus" data-marker-note="Build dynamics" type="button"><b>PC</b> Pre</button>
+                    <button data-marker-kind="chorus" data-marker-label="Chorus" data-marker-note="Open hats / crash the 1" type="button"><b>CH</b> Chorus</button>
+                    <button data-marker-kind="bridge" data-marker-label="Bridge" data-marker-note="New texture" type="button"><b>BR</b> Bridge</button>
+                    <button data-marker-kind="solo" data-marker-label="Solo" data-marker-note="Support phrasing · leave space" type="button"><b>S</b> Solo</button>
+                    <button data-marker-kind="outro" data-marker-label="Outro" data-marker-note="Watch the ending cue" type="button"><b>OUT</b> Outro</button>
+                  </div></div>
+                  <div class="chart-palette-group cue-group"><span>DRUM CUES</span><div class="marker-palette" aria-label="Drum performance cues">
+                    <button data-marker-kind="fill" data-marker-label="Fill" data-marker-note="Fill →" type="button"><b>↗</b> Fill</button>
+                    <button data-marker-kind="hit" data-marker-label="Band Hit" data-marker-note="Crash + kick" type="button"><b>●</b> Hit</button>
+                    <button data-marker-kind="stop" data-marker-label="Stop" data-marker-note="Choke / rest" type="button"><b>𝄽</b> Stop</button>
+                    <button data-marker-kind="push" data-marker-label="Push" data-marker-note="& of 4" type="button"><b>&amp;</b> Push</button>
+                    <button data-marker-kind="ride" data-marker-label="Ride" data-marker-note="Move to ride" type="button"><b>R</b> Ride</button>
+                    <button data-marker-kind="hat" data-marker-label="Closed Hats" data-marker-note="Tighten the pocket" type="button"><b>HH</b> Hats</button>
+                    <button data-marker-kind="halftime" data-marker-label="Half-Time" data-marker-note="Snare on 3" type="button"><b>½</b> Half-time</button>
+                    <button data-marker-kind="build" data-marker-label="Build" data-marker-note="Crescendo / open orchestration" type="button"><b>&lt;</b> Build</button>
+                  </div></div>
                   <form class="marker-form" id="marker-form">
-                    <div><label for="marker-label">MARKER</label><input id="marker-label" maxlength="40" placeholder="Verse 2" required /></div>
-                    <div><label for="marker-note">NOTE</label><input id="marker-note" maxlength="240" placeholder="Ride bell · build for four bars" /></div>
-                    <button type="submit">Add at <strong id="marker-playhead">0:00</strong></button>
+                    <div><label for="marker-label">REHEARSAL MARK / CUE</label><input id="marker-label" maxlength="40" placeholder="Verse 2 · letter C" required /></div>
+                    <div><label for="marker-note">DRUMMER’S SHORTHAND</label><input id="marker-note" maxlength="240" placeholder="16 bars · HH 8ths · x-stick · fill on 4&amp;" /></div>
+                    <button type="submit">Ink at <strong id="marker-playhead">0:00</strong></button>
                   </form>
                   <div class="marker-list" id="marker-list"></div>
                 </div>
@@ -284,6 +300,7 @@
                     <span>MIDI LEARN</span>
                     <select id="midi-learn-target" aria-label="Drum to map"><option value="snare">Snare head</option><option value="rim">Side stick</option><option value="ride">Right ride / cymbal</option><option value="bell">Ride bell</option><option value="crash">Crash</option><option value="closed-hat">Closed hi-hat</option><option value="open-hat">Open hi-hat</option><option value="kick">Kick</option><option value="high-tom">High tom</option><option value="mid-tom">Mid tom</option><option value="floor-tom">Floor tom</option></select>
                     <button id="arm-midi-learn" type="button">Learn next hit</button>
+                    <button id="calibrate-snare" type="button">Calibrate snare</button>
                     <button id="reset-midi-map" type="button">Reset map</button>
                     <small id="midi-map-summary">Factory General MIDI map</small>
                   </div>
@@ -341,7 +358,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-8" defer></script>
-    <script src="/practice.js?v=20260813-8" defer></script>
+    <script src="/app.js?v=20260813-10" defer></script>
+    <script src="/practice.js?v=20260813-10" defer></script>
   </body>
 </html>

@@ -55,6 +55,14 @@ stages: Listen, Chart, Practice, and Record. Drummers can add timestamped song
 sections and performance notes, use A/B loops, change playback speed, set a
 tempo, tap tempo, enable a metronome, and launch playback with a count-in.
 
+The chart is a drummer-focused road map with bar numbers, rehearsal marks,
+section lengths, dynamics, groove texture, and dedicated cues for fills, band
+hits, stops, pushes, ride/hat moves, builds, and half-time. Auto-map performs
+beat-synchronous structural analysis on the local working audio, snaps section
+boundaries to detected beats, finds repeated A/B/C material, estimates bars and
+energy, and saves the result as a fully editable first draft. It does not claim
+to know whether ambiguous repeated material is a verse or chorus.
+
 Recording supports a phone or laptop microphone, a USB audio interface or drum
 module, and Web MIDI e-drums. The browser records the drumless backing and live
 drum signal into one take. MIDI uses a bundled, multi-layer FreePats acoustic kit
