@@ -59,6 +59,15 @@ def test_library_search_matches_words_across_artist_and_title(tmp_path: Path):
     assert [track.title for track in results] == ["01 - Enter Sandman"]
 
 
+def test_library_search_ignores_artist_diacritics(tmp_path: Path):
+    root = tmp_path / "music"
+    album = root / "Mýa" / "Moodring"
+    album.mkdir(parents=True)
+    (album / "Fallen.flac").write_bytes(b"audio")
+
+    assert [track.title for track in MusicLibrary(root).search("mya")] == ["Fallen"]
+
+
 def test_library_indexes_all_supported_tracks_without_a_limit(tmp_path: Path):
     root = tmp_path / "music"
     root.mkdir()
@@ -77,10 +86,10 @@ def test_library_can_refresh_instantly_from_navidrome_catalog(tmp_path: Path):
     song.write_bytes(b"audio")
     catalog = tmp_path / "navidrome.db"
     connection = sqlite3.connect(catalog)
-    connection.execute("CREATE TABLE media_file (path TEXT, title TEXT, size INTEGER, suffix TEXT, missing BOOLEAN)")
+    connection.execute("CREATE TABLE media_file (path TEXT, title TEXT, size INTEGER, suffix TEXT, artist TEXT, album TEXT, missing BOOLEAN)")
     connection.execute(
-        "INSERT INTO media_file VALUES (?, ?, ?, ?, 0)",
-        (song.relative_to(root).as_posix(), "Don't Stop Believin'", 5, "flac"),
+        "INSERT INTO media_file VALUES (?, ?, ?, ?, ?, ?, 0)",
+        (song.relative_to(root).as_posix(), "Don't Stop Believin'", 5, "flac", "Journey", "Escape"),
     )
     connection.commit()
     connection.close()

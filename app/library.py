@@ -8,6 +8,7 @@ import json
 import os
 import sqlite3
 import time
+import unicodedata
 from uuid import uuid4
 
 
@@ -28,6 +29,8 @@ class Track:
     source_type: str = "library"
     source_label: str = "Music library"
     thumbnail_url: str = ""
+    artist: str = ""
+    album: str = ""
 
     def as_dict(self) -> dict:
         return {
@@ -41,6 +44,8 @@ class Track:
             "source_type": self.source_type,
             "source_label": self.source_label,
             "thumbnail_url": self.thumbnail_url,
+            "artist": self.artist,
+            "album": self.album,
         }
 
 
@@ -110,6 +115,11 @@ class MusicLibrary:
     def _id(relative_path: str) -> str:
         return sha256(relative_path.encode("utf-8")).hexdigest()[:24]
 
+    @staticmethod
+    def _search_text(value: str) -> str:
+        decomposed = unicodedata.normalize("NFKD", value.casefold())
+        return "".join(character for character in decomposed if not unicodedata.combining(character))
+
     def scan(self, force: bool = False) -> list[Track]:
         with self._lock:
             if not force and self._tracks and time.monotonic() - self._scanned_at < self.cache_seconds:
@@ -123,9 +133,9 @@ class MusicLibrary:
                 )
                 try:
                     rows = connection.execute(
-                        "SELECT path, title, size, suffix FROM media_file WHERE missing = 0 ORDER BY path COLLATE NOCASE"
+                        "SELECT path, title, size, suffix, artist, album FROM media_file WHERE missing = 0 ORDER BY path COLLATE NOCASE"
                     )
-                    for relative, title, size, suffix in rows:
+                    for relative, title, size, suffix, artist, album in rows:
                         extension = f".{str(suffix).lower().lstrip('.')}"
                         if extension not in AUDIO_EXTENSIONS:
                             continue
@@ -141,6 +151,8 @@ class MusicLibrary:
                             extension=extension.lstrip("."),
                             size=int(size or 0),
                             modified=0,
+                            artist=artist or "",
+                            album=album or "",
                         )
                         tracks.append(track)
                         paths[track.id] = path
@@ -209,12 +221,17 @@ class MusicLibrary:
 
     def search(self, query: str = "", folder: str = "") -> list[Track]:
         tracks = self.scan()
-        query_terms = query.strip().casefold().split()
+        query_terms = self._search_text(query).split()
         normalized_folder = folder.strip().strip("/")
         return [
             track
             for track in tracks
-            if all(term in track.relative_path.casefold() for term in query_terms)
+            if all(
+                term in self._search_text(
+                    f"{track.relative_path} {track.title} {track.artist} {track.album}"
+                )
+                for term in query_terms
+            )
             and (
                 not normalized_folder
                 or track.folder == normalized_folder

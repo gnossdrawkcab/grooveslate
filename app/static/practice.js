@@ -29,6 +29,7 @@
     waveform: null,
     waveformJobId: null,
     drumSamples: new Map(),
+    sampleGroups: new Map(),
     samplePromise: null,
     sampleCounters: new Map(),
     chokeSources: new Map(),
@@ -319,7 +320,7 @@
     if (!practiceState.audioContext) {
       const AudioContext = window.AudioContext || window.webkitAudioContext;
       if (!AudioContext) throw new Error("This browser does not support the recording studio");
-      const context = new AudioContext({ latencyHint: "interactive" });
+      const context = new AudioContext({ latencyHint: 0.001 });
       practiceState.audioContext = context;
       practiceState.mixDestination = context.createMediaStreamDestination();
       practiceState.backingGain = context.createGain();
@@ -375,6 +376,12 @@
         return [key, await context.decodeAudioData(await response.arrayBuffer())];
       }));
       loaded.forEach(([name, buffer]) => practiceState.drumSamples.set(name, buffer));
+      practiceState.sampleGroups.clear();
+      loaded.forEach(([key, buffer]) => {
+        const group = key.slice(0, key.lastIndexOf(":"));
+        if (!practiceState.sampleGroups.has(group)) practiceState.sampleGroups.set(group, []);
+        practiceState.sampleGroups.get(group).push(buffer);
+      });
       return practiceState.drumSamples;
     })().catch((error) => {
       practiceState.samplePromise = null;
@@ -386,7 +393,10 @@
   function sampleForNote(note) {
     if ([35, 36].includes(note)) return ["kick", 1, "kick"];
     if (note === 37) return ["rim", 1, "snare"];
-    if ([38, 40].includes(note)) return ["snare", note === 40 ? 1.04 : 1, "snare"];
+    // Many e-drum modules use 40 for the snare head or a second snare zone,
+    // despite General MIDI calling it "electric snare". Keep every normal
+    // snare zone on the same unpitched acoustic rock snare as the onscreen pad.
+    if ([31, 34, 38, 40].includes(note)) return ["snare", 1, "snare"];
     if (note === 44) return ["pedal-hat", 1, "hat"];
     if (note === 42) return ["closed-hat", 1, "hat"];
     if (note === 46) return [practiceState.hiHatPedal > 80 ? "closed-hat" : "open-hat", 1, "hat"];
@@ -403,12 +413,11 @@
     let group = name;
     if (name === "kick") group = velocity < 57 ? "kick-soft" : velocity < 90 ? "kick-mid" : "kick-hard";
     if (name === "snare") group = velocity < 70 ? "snare-soft" : "snare-hard";
-    const prefix = `${group}:`;
-    const options = [...practiceState.drumSamples.entries()].filter(([key]) => key.startsWith(prefix));
+    const options = practiceState.sampleGroups.get(group) || [];
     if (!options.length) return null;
     const next = practiceState.sampleCounters.get(group) || 0;
     practiceState.sampleCounters.set(group, next + 1);
-    return options[next % options.length][1];
+    return options[next % options.length];
   }
 
   function choke(group, release = .012) {
@@ -421,11 +430,10 @@
     practiceState.chokeSources.delete(group);
   }
 
-  async function playSample(note, velocity) {
+  function playSample(note, velocity) {
     const definition = sampleForNote(note);
     if (!definition) return false;
     try {
-      await ensureDrumSamples();
       const [name, playbackRate, group] = definition;
       const buffer = selectSample(name, velocity);
       if (!buffer) return false;
@@ -443,11 +451,12 @@
     }
   }
 
-  async function playDrum(note, velocity = 100) {
-    const context = await ensureAudioContext();
+  function playDrum(note, velocity = 100) {
+    const context = practiceState.audioContext;
+    if (!context || !practiceState.sampleGroups.size) return false;
     const now = context.currentTime;
     const strength = Math.max(0.08, Math.min(1, velocity / 127));
-    const sampled = await playSample(note, velocity);
+    const sampled = playSample(note, velocity);
     if (!sampled && [35, 36].includes(note)) {
       const oscillator = context.createOscillator();
       const gain = context.createGain();
@@ -481,6 +490,7 @@
     }
     const pad = $(`[data-drum-note="${note}"]`);
     if (pad) { pad.classList.add("hit"); window.setTimeout(() => pad.classList.remove("hit"), 85); }
+    return true;
   }
 
   function click(accent = false) {
@@ -591,7 +601,19 @@
   function onMidiMessage(event) {
     const [status, note, velocity] = event.data;
     if ((status & 0xf0) === 0xb0 && note === 4) practiceState.hiHatPedal = velocity;
-    if ((status & 0xf0) === 0x90 && velocity > 0) playDrum(note, velocity);
+    if ((status & 0xf0) === 0x90 && velocity > 0) {
+      playDrum(note, velocity);
+      const definition = sampleForNote(note);
+      window.requestAnimationFrame(() => {
+        $("#midi-last-hit").textContent = `Last MIDI hit: ${definition?.[0] || "unmapped"} · note ${note} · velocity ${velocity}`;
+      });
+    }
+  }
+
+  async function triggerPad(note, velocity = 108) {
+    await ensureAudioContext();
+    await ensureDrumSamples();
+    playDrum(note, velocity);
   }
 
   function supportedMimeType() {
@@ -719,7 +741,7 @@
   $("#refresh-inputs").addEventListener("click", () => enableAudioInput().catch((error) => app.toast(error.message)));
   $("#audio-input-device").addEventListener("change", () => { if (practiceState.micStream) enableAudioInput().catch((error) => app.toast(error.message)); });
   $("#connect-midi").addEventListener("click", () => connectMidi().catch((error) => app.toast(error.message)));
-  $$("[data-drum-note]").forEach((button) => button.addEventListener("pointerdown", () => playDrum(Number(button.dataset.drumNote), 108).catch((error) => app.toast(error.message))));
+  $$("[data-drum-note]").forEach((button) => button.addEventListener("pointerdown", () => triggerPad(Number(button.dataset.drumNote)).catch((error) => app.toast(error.message))));
   $("#record-take").addEventListener("click", recordTake);
   $("#song-map").addEventListener("pointerdown", (event) => {
     if (event.target.closest(".song-map-marker") || !practiceState.audio) return;
