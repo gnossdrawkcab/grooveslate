@@ -875,10 +875,20 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         model: str,
         request: Request,
         points: int = Query(default=1600, ge=400, le=2400),
+        exclude: str = Query(default="", max_length=200),
+        mix_id: str = Query(default="", max_length=24),
     ) -> dict:
         result_file(job_id, model, request.state.user)
         try:
-            return processor.waveform(job_id, model, points)
+            excluded = [name for name in exclude.split(",") if name]
+            selected_mix_id = mix_id
+            if selected_mix_id and not selected_mix_id.isalnum():
+                raise ValueError("Invalid mix identifier")
+            if excluded and not selected_mix_id:
+                _, selected_mix_id = processor.render_stem_mix(job_id, model, excluded)
+            return processor.waveform(job_id, model, points, selected_mix_id)
+        except ValueError as exc:
+            raise HTTPException(status_code=400, detail=str(exc)) from None
         except (KeyError, RuntimeError) as exc:
             raise HTTPException(status_code=500, detail=f"Waveform unavailable: {exc}") from None
 

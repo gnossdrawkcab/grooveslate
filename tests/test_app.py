@@ -152,6 +152,14 @@ def test_waveform_builds_display_peaks_and_caches_them(tmp_path: Path, monkeypat
     assert 0 < max(first["peaks"]) <= 1
     assert len(calls) == 1
 
+    custom_mix = store.root / "job" / "roformer" / "mixes" / "abc123.flac"
+    custom_mix.parent.mkdir(parents=True)
+    custom_mix.write_bytes(b"custom audio")
+    custom = processor.waveform("job", "roformer", 400, "abc123")
+    assert custom["points"] == 400
+    assert len(calls) == 2
+    assert str(custom_mix) in calls[-1][0][calls[-1][0].index("-i") + 1]
+
 
 def test_library_automatically_rescans_after_cache_expires(tmp_path: Path):
     root = tmp_path / "music"
@@ -391,6 +399,7 @@ def test_frontend_and_health(tmp_path: Path):
         assert "rights-confirmed" not in homepage.text
         assert 'id="session-studio"' in homepage.text
         assert 'id="global-progress"' in homepage.text
+        assert "QUICK MIXES" in homepage.text
         assert client.get("/logo.svg").status_code == 200
         assert client.get("/manifest.webmanifest").status_code == 200
         assert client.get("/service-worker.js").status_code == 200
@@ -405,7 +414,15 @@ def test_frontend_and_health(tmp_path: Path):
         assert 'excluded.length === 1 && excluded[0] === "drums"' in javascript
         assert "function beginActivity" in javascript
         assert "Drawing a full-song challenge" in javascript
+        assert "function selectChallengeGenre" in javascript
+        assert 'id="draw-selected-genre"' in homepage.text
         assert 'accept.textContent = "Preparing song…"' in javascript
+        assert '["Bassless", ["bass"]]' in javascript
+        assert "Capture at the actual swap" in javascript
+        assert 'url.includes("?") ? "&" : "?"' in javascript
+        assert "current mix keeps playing" in javascript
+        assert 'new CustomEvent("drumless:mix-changed"' in javascript
+        assert "Updating waveform for the selected mix" in javascript
         assert javascript.index("const local = await api(`/api/library") < javascript.index(
             "const remote = await api(`/api/imports/search"
         )

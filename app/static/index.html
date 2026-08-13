@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-15" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-20" />
   </head>
   <body>
     <div class="noise"></div>
@@ -59,6 +59,10 @@
           <div class="challenge-options">
             <label><span>SONG POOL</span><select id="challenge-pool"><option value="all">Any library song</option><option value="ready">Drumless tracks ready now</option></select></label>
             <div class="genre-grid" id="challenge-genres"><span>Reading Navidrome genres…</span></div>
+          </div>
+          <div class="genre-choice">
+            <div><span>1 · CHOOSE A GENRE</span><strong id="selected-genre-name">No genre selected</strong></div>
+            <button id="draw-selected-genre" type="button" disabled>2 · Draw my song →</button>
           </div>
           <article class="challenge-card hidden" id="challenge-card">
             <span class="challenge-bolt">⚡</span>
@@ -362,7 +366,9 @@
                 <small class="phase-detail">Queued until you run a comparison</small>
               </div>
               <div class="stem-mixer">
-                <span>PARTS YOU WILL PLAY · TAP TO REMOVE</span>
+                <span>QUICK MIXES · SWITCHING ALWAYS KEEPS YOUR PLACE</span>
+                <div class="mix-presets"><i>Available after separation</i></div>
+                <span class="custom-mix-label">CUSTOM MIX · TAP ANY PART TO REMOVE IT</span>
                 <div class="stem-buttons"><i>Available after separation</i></div>
                 <button class="build-mix" disabled>Rebuild selected mix</button>
               </div>
@@ -386,7 +392,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-15" defer></script>
-    <script src="/practice.js?v=20260813-15" defer></script>
+    <script src="/app.js?v=20260813-20" defer></script>
+    <script src="/practice.js?v=20260813-20" defer></script>
   </body>
 </html>

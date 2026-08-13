@@ -186,17 +186,21 @@
     $("#cue-next").dataset.markerId = next?.id || "";
   }
 
-  async function loadWaveform(jobId) {
+  async function loadWaveform(jobId, excluded = [], mixId = "") {
     practiceState.waveform = null;
-    practiceState.waveformJobId = jobId;
+    const waveformKey = `${jobId}:${mixId || [...excluded].sort().join(",")}`;
+    practiceState.waveformJobId = waveformKey;
     renderSongMap();
     try {
-      const waveform = await app.api(`/api/jobs/${jobId}/waveform/roformer?points=1600`);
-      if (practiceState.waveformJobId !== jobId) return;
+      const query = new URLSearchParams({ points: "1600" });
+      if (excluded.length) query.set("exclude", [...excluded].sort().join(","));
+      if (mixId) query.set("mix_id", mixId);
+      const waveform = await app.api(`/api/jobs/${jobId}/waveform/roformer?${query}`);
+      if (practiceState.waveformJobId !== waveformKey) return;
       practiceState.waveform = waveform;
       renderSongMap();
     } catch {
-      if (practiceState.waveformJobId !== jobId) return;
+      if (practiceState.waveformJobId !== waveformKey) return;
       const empty = $("#song-map-empty");
       empty.textContent = "Waveform unavailable · tap the timeline to seek";
       empty.classList.remove("hidden");
@@ -1143,6 +1147,11 @@
   }
 
   document.addEventListener("drumless:practice-job", (event) => loadPractice(event.detail));
+  document.addEventListener("drumless:mix-changed", (event) => {
+    if (practiceState.job?.id === event.detail.jobId && event.detail.model === "roformer") {
+      loadWaveform(event.detail.jobId, event.detail.excluded || [], event.detail.mixId || "");
+    }
+  });
   document.addEventListener("drumless:clear-job", () => {
     if (practiceState.recorder?.state === "recording") stopRecording();
     studio.classList.add("hidden");

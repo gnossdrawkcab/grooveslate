@@ -271,12 +271,22 @@ class Processor:
                     stems[name] = path
         return stems
 
-    def waveform(self, job_id: str, model: str, points: int = 1600) -> dict:
+    def waveform(
+        self,
+        job_id: str,
+        model: str,
+        points: int = 1600,
+        mix_id: str = "",
+    ) -> dict:
         """Build and cache display-ready waveform peaks for a completed mix."""
-        source = self.store.output_path(job_id, model)
+        source = (
+            self.store.root / job_id / model / "mixes" / f"{mix_id}.flac"
+            if mix_id
+            else self.store.output_path(job_id, model)
+        )
         if not source.is_file():
             raise KeyError(job_id)
-        cache = source.parent / f"waveform-{points}.json"
+        cache = source.parent / f"{source.stem}-waveform-{points}.json"
         if cache.is_file():
             try:
                 cached = json.loads(cache.read_text(encoding="utf-8"))

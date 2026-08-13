@@ -13,6 +13,7 @@ const state = {
   stemsLoaded: new Set(),
   challengeGenres: null,
   challengeDraw: null,
+  selectedChallengeGenre: null,
   activeChallenge: null,
   community: [],
   youtubeResults: [],
@@ -84,6 +85,7 @@ function apiActivity(path, options = {}) {
   if (path === "/api/imports/upload") return "Uploading source audio…";
   if (path === "/api/jobs" && method === "POST") return "Queueing GPU separation…";
   if (path.includes("/mix/") && method === "POST") return "Updating the stem mix…";
+  if (path.includes("/waveform/")) return "Updating waveform for the selected mix…";
   if (path.includes("/auto-map")) return "Analyzing beats, form, and energy…";
   if (path.includes("/practice/takes") && method === "POST") return "Saving the recorded take…";
   if (path.includes("/practice") && method === "PUT") return "Saving chart and practice settings…";
@@ -348,13 +350,25 @@ function renderChallengeGenres() {
   const grid = $("#challenge-genres");
   if (!genres) return;
   grid.innerHTML = genres.map((genre) => `
-    <button type="button" data-challenge-genre="${genre.id}" ${genre.count === 0 ? "disabled" : ""}>
-      <span>${escapeHtml(genre.label)}</span><b>${genre.count == null ? "YT" : genre.count.toLocaleString()}</b>
+    <button type="button" data-challenge-genre="${genre.id}" class="${state.selectedChallengeGenre === genre.id ? "active" : ""}" aria-pressed="${state.selectedChallengeGenre === genre.id}" ${genre.count === 0 ? "disabled" : ""}>
+      <span>${escapeHtml(genre.label)}</span><b>${genre.count == null ? (state.selectedChallengeGenre === genre.id ? "✓" : "CHOOSE") : genre.count.toLocaleString()}</b>
     </button>`).join("");
-  $$('[data-challenge-genre]', grid).forEach((button) => button.addEventListener("click", () => drawChallenge(button.dataset.challengeGenre)));
+  $$('[data-challenge-genre]', grid).forEach((button) => button.addEventListener("click", () => selectChallengeGenre(button.dataset.challengeGenre)));
+  const selected = state.challengeGenres?.genres.find((genre) => genre.id === state.selectedChallengeGenre);
+  $("#selected-genre-name").textContent = selected ? selected.label : "No genre selected";
+  $("#draw-selected-genre").disabled = !selected;
+}
+
+function selectChallengeGenre(genre) {
+  state.selectedChallengeGenre = genre;
+  state.challengeDraw = null;
+  $("#challenge-card").classList.add("hidden");
+  renderChallengeGenres();
 }
 
 async function drawChallenge(genre) {
+  state.selectedChallengeGenre = genre;
+  renderChallengeGenres();
   $$('[data-challenge-genre]').forEach((button) => { button.disabled = true; });
   try {
     state.challengeDraw = await api("/api/challenges/draw", {
@@ -612,6 +626,7 @@ function resetCards() {
     copyLink.removeAttribute("data-url");
     copyLink.onclick = null;
     $(".stem-buttons", card).innerHTML = "<i>Available after separation</i>";
+    $(".mix-presets", card).innerHTML = "<i>Available after separation</i>";
     $(".build-mix", card).disabled = true;
   });
   $("#empty-note").classList.remove("hidden");
@@ -821,6 +836,7 @@ async function loadStems(jobId, model, card) {
   state.stemsLoaded.add(cacheKey);
   try {
     const { stems } = await api(`/api/jobs/${jobId}/stems/${model}`);
+    const available = new Set(stems.map((stem) => stem.name));
     const container = $(".stem-buttons", card);
     container.innerHTML = stems.map((stem) => `
       <button class="stem-toggle ${stem.name === "drums" ? "removed" : ""}" data-stem="${stem.name}">
@@ -830,9 +846,31 @@ async function loadStems(jobId, model, card) {
     $$(".stem-toggle", container).forEach((button) => {
       button.addEventListener("click", () => {
         button.classList.toggle("removed");
+        syncMixPreset(card);
         scheduleCustomMix(jobId, model, card);
       });
     });
+    const presetDefinitions = [
+      ["Full mix", []],
+      ["Drumless", ["drums"]],
+      ["Bassless", ["bass"]],
+      ["Vocalless", ["vocals"]],
+      ["Guitarless", ["guitar"]],
+      ["Keysless", ["piano"]],
+    ].filter(([, excluded]) => excluded.every((stem) => available.has(stem)));
+    const presets = $(".mix-presets", card);
+    presets.innerHTML = presetDefinitions.map(([label, excluded]) => `
+      <button type="button" data-mix-preset="${excluded.join(",")}">${label}</button>
+    `).join("");
+    $$('[data-mix-preset]', presets).forEach((button) => button.addEventListener("click", async () => {
+      const excluded = new Set(button.dataset.mixPreset.split(",").filter(Boolean));
+      $$(".stem-toggle", card).forEach((stemButton) => {
+        stemButton.classList.toggle("removed", excluded.has(stemButton.dataset.stem));
+      });
+      syncMixPreset(card);
+      await buildCustomMix(jobId, model, card);
+    }));
+    syncMixPreset(card);
     const build = $(".build-mix", card);
     build.disabled = false;
     build.onclick = () => buildCustomMix(jobId, model, card);
@@ -840,6 +878,13 @@ async function loadStems(jobId, model, card) {
     state.stemsLoaded.delete(cacheKey);
     $(".stem-buttons", card).innerHTML = `<i>${escapeHtml(error.message)}</i>`;
   }
+}
+
+function syncMixPreset(card) {
+  const excluded = $$(".stem-toggle.removed", card).map((button) => button.dataset.stem).sort().join(",");
+  $$('[data-mix-preset]', card).forEach((button) => {
+    button.classList.toggle("active", button.dataset.mixPreset.split(",").filter(Boolean).sort().join(",") === excluded);
+  });
 }
 
 function scheduleCustomMix(jobId, model, card) {
@@ -875,7 +920,10 @@ async function buildCustomMix(jobId, model, card) {
         body: JSON.stringify({ excluded }),
       });
     const audio = $("audio", card);
-    await replaceAudioSource(audio, `${mix.audio_url}?v=${Date.now()}`);
+    await replaceAudioSource(audio, cacheBusted(mix.audio_url));
+    document.dispatchEvent(new CustomEvent("drumless:mix-changed", {
+      detail: { jobId, model, excluded: mix.excluded || excluded, mixId: mix.mix_id || "" },
+    }));
     const download = $(".download", card);
     download.href = mix.download_url;
     download.classList.remove("disabled");
@@ -897,32 +945,45 @@ async function buildCustomMix(jobId, model, card) {
   }
 }
 
-function replaceAudioSource(audio, source) {
-  const resumeAt = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
-  const wasPlaying = !audio.paused && !audio.ended;
-  const playbackRate = audio.playbackRate;
-  const volume = audio.volume;
-  const muted = audio.muted;
+function cacheBusted(url) {
+  return `${url}${url.includes("?") ? "&" : "?"}v=${Date.now()}`;
+}
 
-  return new Promise((resolve) => {
-    const finish = async () => {
-      const latestPosition = Number.isFinite(audio.duration)
-        ? Math.min(resumeAt, Math.max(0, audio.duration - 0.05))
-        : resumeAt;
-      audio.currentTime = latestPosition;
-      audio.playbackRate = playbackRate;
-      audio.volume = volume;
-      audio.muted = muted;
-      if (wasPlaying) {
-        try { await audio.play(); }
-        catch { toast("Mix updated — press play to continue"); }
-      }
-      resolve();
-    };
-    audio.addEventListener("loadedmetadata", finish, { once: true });
-    audio.addEventListener("error", resolve, { once: true });
-    audio.src = source;
-    audio.load();
+function replaceAudioSource(audio, source) {
+  // Preflight the replacement while the current mix keeps playing. Only touch
+  // the real player after the new source proves it can load.
+  return new Promise((resolve, reject) => {
+    const preload = new Audio();
+    preload.preload = "metadata";
+    preload.addEventListener("error", () => reject(new Error("The new mix could not be loaded. Your current mix is still playing.")), { once: true });
+    preload.addEventListener("loadedmetadata", () => {
+      // Capture at the actual swap—not when rendering starts—so a long first-time
+      // custom mix never sends the drummer backward in the song.
+      const resumeAt = Number.isFinite(audio.currentTime) ? audio.currentTime : 0;
+      const wasPlaying = !audio.paused && !audio.ended;
+      const playbackRate = audio.playbackRate;
+      const volume = audio.volume;
+      const muted = audio.muted;
+      const finish = async () => {
+        const latestPosition = Number.isFinite(audio.duration)
+          ? Math.min(resumeAt, Math.max(0, audio.duration - 0.05))
+          : resumeAt;
+        audio.currentTime = latestPosition;
+        audio.playbackRate = playbackRate;
+        audio.volume = volume;
+        audio.muted = muted;
+        if (wasPlaying) {
+          try { await audio.play(); }
+          catch { toast("Mix updated — press play to continue"); }
+        }
+        resolve();
+      };
+      audio.addEventListener("loadedmetadata", finish, { once: true });
+      audio.src = source;
+      audio.load();
+    }, { once: true });
+    preload.src = source;
+    preload.load();
   });
 }
 
@@ -1267,11 +1328,19 @@ $("#challenge-pool").addEventListener("change", () => {
   renderChallengeGenres();
 });
 $("#redraw-challenge").addEventListener("click", (event) => drawChallenge(event.currentTarget.dataset.genre));
+$("#draw-selected-genre").addEventListener("click", () => {
+  if (state.selectedChallengeGenre) drawChallenge(state.selectedChallengeGenre);
+});
 $("#surprise-challenge").addEventListener("click", async () => {
   try {
     await loadChallengeGenres();
     const genres = state.challengeGenres?.genres || [];
-    if (genres.length) await drawChallenge(genres[Math.floor(Math.random() * genres.length)].id);
+    if (genres.length) {
+      const genre = genres[Math.floor(Math.random() * genres.length)].id;
+      state.selectedChallengeGenre = genre;
+      renderChallengeGenres();
+      await drawChallenge(genre);
+    }
   } catch (error) { toast(error.message); }
 });
 $("#accept-challenge").addEventListener("click", acceptChallenge);
