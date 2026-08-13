@@ -67,6 +67,13 @@ standard MIDI for a DAW. Takes, notes, and the selected best take are saved
 under `${DATA_ROOT}/practice` and can only be accessed by their owner. See
 `app/static/drum-kit/LICENSE.md` for sample provenance.
 
+The MIDI kit includes a persistent per-browser MIDI Learn map for nonstandard
+e-kit note assignments. Snare velocity changes volume without swapping to a
+thin low-velocity timbre, side-stick remains a separate articulation, cymbals
+play at their natural recorded pitch, and sample pre-roll is trimmed for a
+faster transient. Wired audio is recommended because Bluetooth output latency
+cannot be removed by the browser.
+
 ## Challenge mode
 
 Challenge Mode reads Navidrome's embedded genre tags and maps its detailed

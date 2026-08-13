@@ -464,6 +464,13 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .record-routing { display: grid; grid-template-columns: 1fr 1.4fr .7fr .7fr; align-items: end; gap: 7px; }
 .record-routing button { min-height: 40px; margin: 0; }
 .input-status-row { display: flex; justify-content: space-between; gap: 12px; margin: 9px 0 12px; color: var(--muted); font: 7px var(--mono); }
+.midi-learn { display: grid; grid-template-columns: auto minmax(130px, .7fr) auto auto minmax(180px, 1fr); align-items: center; gap: 6px; margin: -3px 0 12px; padding: 8px; border: 1px solid var(--line); background: color-mix(in srgb, var(--lime) 4%, transparent); }
+.midi-learn > span { color: var(--lime); font: 7px var(--mono); letter-spacing: .08em; }
+.midi-learn select, .midi-learn button { min-height: 34px; }
+.midi-learn button { border: 1px solid var(--line); background: transparent; color: var(--ink); font: 7px var(--mono); cursor: pointer; }
+.midi-learn button.active { border-color: var(--lime); background: var(--lime); color: var(--dark); }
+.midi-learn small { overflow: hidden; color: var(--muted); font: 6px var(--mono); white-space: nowrap; text-overflow: ellipsis; }
+.latency-tip { margin: -5px 0 11px; color: var(--muted); font: 6px/1.5 var(--mono); }
 .kit-pads { display: grid; grid-template-columns: repeat(7, 1fr); gap: 5px; }
 .kit-pads button { min-width: 0; min-height: 54px; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 4px; border: 1px solid var(--line); border-radius: 3px; background: var(--paper-2); color: var(--ink); cursor: pointer; touch-action: manipulation; }
 .kit-pads button b { font: 7px var(--mono); }
@@ -681,6 +688,8 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
   .record-routing { grid-template-columns: 1fr 1fr; }
   .record-routing label { grid-column: 1 / -1; }
   .input-status-row { align-items: flex-start; flex-direction: column; }
+  .midi-learn { grid-template-columns: 1fr 1fr; }
+  .midi-learn > span, .midi-learn small { grid-column: 1 / -1; }
   .kit-pads { grid-template-columns: repeat(4, 1fr); }
   .kit-pads button { min-height: 59px; }
   .take-details { grid-template-columns: 1fr; }

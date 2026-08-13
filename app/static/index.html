@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-7" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-8" />
   </head>
   <body>
     <div class="noise"></div>
@@ -280,6 +280,14 @@
                     <button id="connect-midi" type="button">Connect MIDI</button>
                   </div>
                   <div class="input-status-row"><span id="audio-input-status">Audio input not enabled</span><span id="midi-input-status">MIDI not connected</span><span id="midi-last-hit">Last MIDI hit: —</span></div>
+                  <div class="midi-learn">
+                    <span>MIDI LEARN</span>
+                    <select id="midi-learn-target" aria-label="Drum to map"><option value="snare">Snare head</option><option value="rim">Side stick</option><option value="ride">Right ride / cymbal</option><option value="bell">Ride bell</option><option value="crash">Crash</option><option value="closed-hat">Closed hi-hat</option><option value="open-hat">Open hi-hat</option><option value="kick">Kick</option><option value="high-tom">High tom</option><option value="mid-tom">Mid tom</option><option value="floor-tom">Floor tom</option></select>
+                    <button id="arm-midi-learn" type="button">Learn next hit</button>
+                    <button id="reset-midi-map" type="button">Reset map</button>
+                    <small id="midi-map-summary">Factory General MIDI map</small>
+                  </div>
+                  <p class="latency-tip">For the fastest response, use USB MIDI with wired headphones or speakers. Bluetooth audio adds delay outside the browser’s control.</p>
                   <div class="kit-pads" aria-label="Virtual drum kit">
                     <button data-drum-note="49" type="button"><b>CRASH</b><span>49</span></button>
                     <button data-drum-note="51" type="button"><b>RIDE</b><span>51</span></button>
@@ -333,7 +341,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-7" defer></script>
-    <script src="/practice.js?v=20260813-7" defer></script>
+    <script src="/app.js?v=20260813-8" defer></script>
+    <script src="/practice.js?v=20260813-8" defer></script>
   </body>
 </html>

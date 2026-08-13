@@ -36,7 +36,14 @@
     chokeSources: new Map(),
     hiHatPedal: 127,
     wakeLock: null,
+    midiOverrides: new Map(),
+    midiLearnTarget: null,
   };
+
+  try {
+    const savedMap = JSON.parse(localStorage.getItem("grooveslate-midi-map") || "{}");
+    Object.entries(savedMap).forEach(([note, instrument]) => practiceState.midiOverrides.set(Number(note), instrument));
+  } catch {}
 
   function setPanel(name) {
     $$("[data-workbench]").forEach((button) => button.classList.toggle("active", button.dataset.workbench === name));
@@ -419,7 +426,7 @@
 
   function connectToDrumOutputs(node) {
     node.connect(practiceState.audioContext.destination);
-    node.connect(practiceState.mixDestination);
+    if (practiceState.recorder?.state === "recording") node.connect(practiceState.mixDestination);
   }
 
   function noiseBuffer(duration = 1) {
@@ -439,7 +446,6 @@
         "kick-soft": ["AcousticBassDrum/LV1.wav", "AcousticBassDrum/LV2.wav"],
         "kick-mid": ["AcousticBassDrum/MV1.wav", "AcousticBassDrum/MV2.wav"],
         "kick-hard": ["AcousticBassDrum/HV1.wav", "AcousticBassDrum/HV2.wav", "AcousticBassDrum/HV3.wav", "AcousticBassDrum/HV4.wav"],
-        "snare-soft": ["AcousticSnare/LV1.wav", "AcousticSnare/LV2.wav"],
         "snare-hard": ["AcousticSnare/HV1.wav", "AcousticSnare/HV2.wav", "AcousticSnare/HV3.wav", "AcousticSnare/HV4.wav", "AcousticSnare/HV5.wav", "AcousticSnare/HV6.wav", "AcousticSnare/HV7.wav"],
         rim: ["SideStick/01.wav", "SideStick/02.wav", "SideStick/03.wav", "SideStick/04.wav"],
         "closed-hat": ["ClosedHiHat/01.wav", "ClosedHiHat/02.wav", "ClosedHiHat/03.wav", "ClosedHiHat/04.wav", "ClosedHiHat/05.wav", "ClosedHiHat/06.wav", "ClosedHiHat/07.wav"],
@@ -450,6 +456,7 @@
         "high-tom": ["HighTom/01.wav", "HighTom/02.wav", "HighTom/03.wav"],
         crash: ["CrashCymbal1/01.wav", "CrashCymbal1/02.wav", "CrashCymbal2/01.wav"],
         ride: ["RideCymbal1/MV1.wav", "RideCymbal1/MV2.wav", "RideCymbal1/MV3.wav", "RideCymbal1/HV1.wav", "RideCymbal1/HV2.wav"],
+        "ride-alt": ["RideCymbal2/MV1.wav", "RideCymbal2/MV2.wav", "RideCymbal2/MV3.wav", "RideCymbal2/HV1.wav", "RideCymbal2/HV2.wav"],
         bell: ["RideBell/01.wav", "RideBell/02.wav", "RideBell/03.wav", "RideBell/04.wav"],
       };
       const entries = Object.entries(files).flatMap(([name, paths]) => paths.map((path, index) => [`${name}:${index}`, path]));
@@ -474,6 +481,8 @@
   }
 
   function sampleForNote(note) {
+    const override = practiceState.midiOverrides.get(note);
+    if (override) return instrumentDefinition(override);
     if ([35, 36].includes(note)) return ["kick", 1, "kick"];
     if (note === 37) return ["rim", 1, "snare"];
     // Many e-drum modules use 40 for the snare head or a second snare zone,
@@ -483,20 +492,33 @@
     if (note === 44) return ["pedal-hat", 1, "hat"];
     if (note === 42) return ["closed-hat", 1, "hat"];
     if (note === 46) return [practiceState.hiHatPedal > 80 ? "closed-hat" : "open-hat", 1, "hat"];
-    if ([49, 52, 55, 57].includes(note)) return ["crash", 2 ** ((note - 49) / 24)];
+    if ([49, 52, 55, 57].includes(note)) return ["crash", 1, "cymbal"];
     if (note === 53) return ["bell", 1, "cymbal"];
-    if ([51, 59].includes(note)) return ["ride", 2 ** ((note - 51) / 24), "cymbal"];
+    if ([51, 59].includes(note)) return ["ride", 1, "cymbal"];
     if ([48, 50].includes(note)) return ["high-tom", note === 50 ? 1.12 : .94];
     if ([45, 47].includes(note)) return ["mid-tom", note === 47 ? 1.04 : .9];
     if ([41, 43].includes(note)) return ["floor-tom", note === 43 ? 1.12 : .94];
     return null;
   }
 
+  function instrumentDefinition(instrument) {
+    const definitions = {
+      kick: ["kick", 1, "kick"], snare: ["snare", 1, "snare"], rim: ["rim", 1, "snare"],
+      "closed-hat": ["closed-hat", 1, "hat"], "open-hat": ["open-hat", 1, "hat"],
+      crash: ["crash", 1, "cymbal"], ride: ["ride", 1, "cymbal"], bell: ["bell", 1, "cymbal"],
+      "high-tom": ["high-tom", 1, "tom"], "mid-tom": ["mid-tom", 1, "tom"], "floor-tom": ["floor-tom", 1, "tom"],
+    };
+    return definitions[instrument] || null;
+  }
+
   function selectSample(name, velocity) {
     let group = name;
     if (name === "kick") group = velocity < 57 ? "kick-soft" : velocity < 90 ? "kick-mid" : "kick-hard";
-    if (name === "snare") group = velocity < 70 ? "snare-soft" : "snare-hard";
-    const options = practiceState.sampleGroups.get(group) || [];
+    // The low-velocity FreePats snare layer has a much thinner electronic
+    // character. Preserve touch through gain, not an abrupt sample-family swap.
+    if (name === "snare") group = "snare-hard";
+    let options = practiceState.sampleGroups.get(group) || [];
+    if (name === "ride") options = [...options, ...(practiceState.sampleGroups.get("ride-alt") || [])];
     if (!options.length) return null;
     const next = practiceState.sampleCounters.get(group) || 0;
     practiceState.sampleCounters.set(group, next + 1);
@@ -525,8 +547,10 @@
       const gain = practiceState.audioContext.createGain();
       source.buffer = buffer;
       source.playbackRate.value = playbackRate;
-      gain.gain.value = Math.max(.06, Math.min(1, (velocity / 127) ** .72));
-      source.connect(gain); connectToDrumOutputs(gain); source.start();
+      const floor = name === "snare" ? .14 : .06;
+      const curve = name === "snare" ? .56 : .72;
+      gain.gain.value = Math.max(floor, Math.min(1, (velocity / 127) ** curve));
+      source.connect(gain); connectToDrumOutputs(gain); source.start(practiceState.audioContext.currentTime);
       if (name === "open-hat") practiceState.chokeSources.set("hat", { source, gain });
       return true;
     } catch {
@@ -688,6 +712,7 @@
       captureMidi({ kind: "cc", control: note, value: velocity, channel: status & 0x0f });
     }
     if ((status & 0xf0) === 0x90 && velocity > 0) {
+      if (practiceState.midiLearnTarget) learnMidiNote(note);
       playDrum(note, velocity);
       captureMidi({ kind: "note", note, velocity, channel: status & 0x0f });
       const definition = sampleForNote(note);
@@ -695,6 +720,24 @@
         $("#midi-last-hit").textContent = `Last MIDI hit: ${definition?.[0] || "unmapped"} · note ${note} · velocity ${velocity}`;
       });
     }
+  }
+
+  function midiMapSummary() {
+    const summary = $("#midi-map-summary");
+    if (!summary) return;
+    const mappings = [...practiceState.midiOverrides.entries()];
+    summary.textContent = mappings.length ? mappings.map(([note, name]) => `${note}→${name}`).join(" · ") : "Factory General MIDI map";
+  }
+
+  function learnMidiNote(note) {
+    const instrument = practiceState.midiLearnTarget;
+    practiceState.midiLearnTarget = null;
+    practiceState.midiOverrides.set(note, instrument);
+    try { localStorage.setItem("grooveslate-midi-map", JSON.stringify(Object.fromEntries(practiceState.midiOverrides))); } catch {}
+    $("#arm-midi-learn").classList.remove("active");
+    $("#arm-midi-learn").textContent = "Learn next hit";
+    midiMapSummary();
+    app.toast(`MIDI note ${note} is now ${instrument}`);
   }
 
   function captureMidi(event) {
@@ -857,6 +900,23 @@
   $("#refresh-inputs").addEventListener("click", () => enableAudioInput().catch((error) => app.toast(error.message)));
   $("#audio-input-device").addEventListener("change", () => { if (practiceState.micStream) enableAudioInput().catch((error) => app.toast(error.message)); });
   $("#connect-midi").addEventListener("click", () => connectMidi().catch((error) => app.toast(error.message)));
+  $("#arm-midi-learn").addEventListener("click", () => {
+    if (practiceState.midiLearnTarget) {
+      practiceState.midiLearnTarget = null;
+      $("#arm-midi-learn").classList.remove("active");
+      $("#arm-midi-learn").textContent = "Learn next hit";
+      return;
+    }
+    practiceState.midiLearnTarget = $("#midi-learn-target").value;
+    $("#arm-midi-learn").classList.add("active");
+    $("#arm-midi-learn").textContent = `Hit ${$("#midi-learn-target").selectedOptions[0].textContent} now…`;
+  });
+  $("#reset-midi-map").addEventListener("click", () => {
+    practiceState.midiOverrides.clear(); practiceState.midiLearnTarget = null;
+    try { localStorage.removeItem("grooveslate-midi-map"); } catch {}
+    $("#arm-midi-learn").classList.remove("active"); $("#arm-midi-learn").textContent = "Learn next hit";
+    midiMapSummary(); app.toast("Factory MIDI map restored");
+  });
   $$("[data-drum-note]").forEach((button) => button.addEventListener("pointerdown", () => triggerPad(Number(button.dataset.drumNote)).catch((error) => app.toast(error.message))));
   $("#record-take").addEventListener("click", recordTake);
   $("#take-upload").addEventListener("change", (event) => uploadExistingTake(event.target.files[0]));
@@ -904,4 +964,5 @@
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && practiceState.audio && !practiceState.audio.paused) requestWakeLock();
   });
+  midiMapSummary();
 })();
