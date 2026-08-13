@@ -129,9 +129,10 @@ class MusicLibrary:
                         extension = f".{str(suffix).lower().lstrip('.')}"
                         if extension not in AUDIO_EXTENSIONS:
                             continue
-                        path = (self.root / relative).resolve()
-                        if not path.is_relative_to(self.root):
+                        relative_path = Path(relative)
+                        if relative_path.is_absolute() or ".." in relative_path.parts:
                             continue
+                        path = self.root / relative_path
                         track = Track(
                             id=self._id(relative),
                             relative_path=relative,
