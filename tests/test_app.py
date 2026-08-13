@@ -186,6 +186,32 @@ def test_library_and_job_creation(tmp_path: Path):
         assert client.get("/api/songs/artist-song").json()["id"] == job["id"]
 
 
+def test_youtube_only_mode_blocks_private_sources_and_attests_imports(tmp_path: Path, monkeypatch):
+    config = replace(settings(tmp_path), youtube_only=True, media_extractor_enabled=True)
+    app = create_app(config, start_worker=False)
+    monkeypatch.setattr(app.state.imports, "import_url", lambda url, title="": SimpleNamespace(as_dict=lambda: {"id": "yt", "title": title}))
+    with TestClient(app) as client:
+        assert client.get("/api/session").json()["source_mode"] == "youtube"
+        assert client.get("/api/library").status_code == 404
+        assert client.post("/api/imports/upload", files={"file": ("song.mp3", b"audio")}).status_code == 404
+        assert client.post("/api/imports/url", json={"url": "https://youtu.be/test"}).status_code == 400
+        response = client.post("/api/imports/url", json={"url": "https://youtu.be/test", "title": "Song", "rights_confirmed": True})
+        assert response.status_code == 201
+        assert response.json()["track"]["title"] == "Song"
+
+
+def test_youtube_challenge_draws_from_search(tmp_path: Path, monkeypatch):
+    app = create_app(replace(settings(tmp_path), youtube_only=True), start_worker=False)
+    monkeypatch.setattr(app.state.imports, "search", lambda query, limit: [{"id": "video", "url": "https://youtu.be/video", "title": "Funk Song", "channel": "Band", "duration": 180}])
+    with TestClient(app) as client:
+        genres = client.get("/api/challenges/genres").json()
+        assert genres["source"] == "youtube"
+        assert len(genres["genres"]) == 15
+        draw = client.post("/api/challenges/draw", json={"genre": "funk"}).json()
+        assert draw["youtube_url"] == "https://youtu.be/video"
+        assert draw["track"]["artist"] == "Band"
+
+
 def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: Path):
     config = replace(
         settings(tmp_path),

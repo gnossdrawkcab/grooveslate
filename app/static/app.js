@@ -274,8 +274,8 @@ function renderChallengeGenres() {
   const grid = $("#challenge-genres");
   if (!genres) return;
   grid.innerHTML = genres.map((genre) => `
-    <button type="button" data-challenge-genre="${genre.id}" ${genre.count ? "" : "disabled"}>
-      <span>${escapeHtml(genre.label)}</span><b>${genre.count.toLocaleString()}</b>
+    <button type="button" data-challenge-genre="${genre.id}" ${genre.count === 0 ? "disabled" : ""}>
+      <span>${escapeHtml(genre.label)}</span><b>${genre.count == null ? "YT" : genre.count.toLocaleString()}</b>
     </button>`).join("");
   $$('[data-challenge-genre]', grid).forEach((button) => button.addEventListener("click", () => drawChallenge(button.dataset.challengeGenre)));
 }
@@ -314,6 +314,16 @@ async function acceptChallenge() {
     toast("Challenge accepted — go earn it");
     return;
   }
+  if (draw.youtube_url) {
+    const imported = await importURL(draw.youtube_url, draw.track.title);
+    if (imported) {
+      draw.track = imported;
+      state.activeChallenge = draw;
+      try { sessionStorage.setItem("grooveslate-challenge", JSON.stringify(draw)); } catch {}
+      renderActiveChallenge();
+    }
+    return;
+  }
   state.selected = draw.track;
   renderSelection();
   document.body.classList.add("studio-open");
@@ -337,7 +347,7 @@ function formatDuration(seconds) {
 function renderImportResults() {
   const list = $("#track-list");
   if (!state.importResults.length) {
-    list.innerHTML = `<div class="empty-library">Search your server library first, then YouTube. Select a result to add it to your practice list.</div>`;
+    list.innerHTML = `<div class="empty-library">${state.session?.source_mode === "youtube" ? "Search YouTube, then choose a permitted song to prepare for practice." : "Search your server library first, then YouTube. Select a result to add it to your practice list."}</div>`;
     return;
   }
   let previousKind = "";
@@ -465,6 +475,16 @@ async function loadSession() {
       ? `${state.session.user} · Admin`
       : state.session.user;
     $("#current-user-name").textContent = `${state.session.user}’s`;
+    if (state.session.source_mode === "youtube") {
+      document.body.classList.add("youtube-only");
+      $$('[data-library-only]').forEach((element) => element.classList.add("hidden"));
+      $("#challenge-source-copy").textContent = "Every draw searches YouTube in your chosen genre, then gives you a focused drumming mission.";
+      $("#challenge-pool").innerHTML = '<option value="all">YouTube song</option>';
+      $("#home-song-search-input").placeholder = "Find a song on YouTube";
+      $("#provider-search-input").placeholder = "Search YouTube";
+      $("#selected-path").textContent = "Search YouTube or paste a permitted video URL.";
+      $("#source-footer").textContent = "YOUTUBE DISCOVERY · PRIVATE PRACTICE WORKSPACE";
+    }
   } catch {
     // The authentication middleware handles expired sessions.
   }
@@ -531,7 +551,9 @@ function setImportBusy(busy, message = "") {
 async function loadImportCapabilities() {
   try {
     state.importCapabilities = await api("/api/imports/capabilities");
-    $("#import-status").textContent = state.importCapabilities.media_extractor
+    $("#import-status").textContent = state.importCapabilities.youtube_only
+      ? "Search YouTube or paste a YouTube link you have permission to use."
+      : state.importCapabilities.media_extractor
       ? "Library matches appear first, followed by YouTube."
       : "Library search is ready. YouTube search is disabled.";
     if (state.browserMode === "import") renderImportResults();
@@ -544,9 +566,16 @@ async function searchProvider(event) {
   event.preventDefault();
   const query = $("#provider-search-input").value.trim();
   if (!query || state.importBusy) return;
-  setImportBusy(true, "Searching your library…");
+  setImportBusy(true, state.session?.source_mode === "youtube" ? "Searching YouTube…" : "Searching your library…");
   state.importResults = [];
   try {
+    if (state.session?.source_mode === "youtube") {
+      const youtubeOnlyResults = await api(`/api/imports/search?q=${encodeURIComponent(query)}&limit=20`);
+      state.importResults = youtubeOnlyResults.results.map((item) => ({ ...item, kind: "youtube" }));
+      renderImportResults();
+      $("#import-status").textContent = `${youtubeOnlyResults.results.length} YouTube result${youtubeOnlyResults.results.length === 1 ? "" : "s"}.`;
+      return;
+    }
     const local = await api(`/api/library?q=${encodeURIComponent(query)}&limit=20`);
     state.importResults = local.tracks.map((track) => ({ kind: "library", track }));
     renderImportResults();
@@ -569,6 +598,8 @@ async function searchProvider(event) {
 
 async function importURL(url, title = "") {
   if (!url || state.importBusy) return;
+  const youtubeOnly = state.session?.source_mode === "youtube";
+  if (youtubeOnly && !window.confirm("I confirm I own this song or have permission to download and use it for private practice.")) return;
   setImportBusy(true, "Importing audio… Keep this page open until processing is queued.");
   try {
     const data = await api("/api/imports/url", {
@@ -577,6 +608,7 @@ async function importURL(url, title = "") {
       body: JSON.stringify({
         url,
         title,
+        rights_confirmed: youtubeOnly,
       }),
     });
     state.selected = data.track;
@@ -584,6 +616,7 @@ async function importURL(url, title = "") {
     renderSelection();
     toast("Audio imported. Starting RoFormer…");
     await startJob();
+    return data.track;
   } catch (error) {
     toast(error.message);
     $("#import-status").textContent = error.message;
@@ -1137,18 +1170,18 @@ $$(".model-card").forEach(setupPracticePlayer);
 applyTheme(document.documentElement.dataset.theme);
 try { state.activeChallenge = JSON.parse(sessionStorage.getItem("grooveslate-challenge") || "null"); } catch {}
 renderActiveChallenge();
-Promise.allSettled([
-  loadSession(),
-  loadLibrary(),
-  loadCompleted(),
-  loadCommunity(),
-  loadImportCapabilities(),
-  restoreRecentJob(),
-]);
+async function boot() {
+  await loadSession();
+  await Promise.allSettled([
+    state.session?.source_mode === "youtube" ? Promise.resolve() : loadLibrary(),
+    loadCompleted(), loadCommunity(), loadImportCapabilities(), restoreRecentJob(),
+  ]);
+}
+boot();
 
 // Keep the server library index warm and pick up newly added music automatically.
 window.setInterval(() => {
-  if (!document.hidden && state.browserMode === "library") loadLibrary();
+  if (!document.hidden && state.browserMode === "library" && state.session?.source_mode !== "youtube") loadLibrary();
 }, 60_000);
 
 window.DrumlessApp = {

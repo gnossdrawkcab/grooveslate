@@ -30,6 +30,7 @@ class Settings:
     app_admin_users: tuple[str, ...] = ("Pat",)
     library_cache_seconds: int = 300
     navidrome_db_path: Path | None = None
+    youtube_only: bool = False
 
     @classmethod
     def from_env(cls) -> "Settings":
@@ -72,4 +73,5 @@ class Settings:
             ),
             library_cache_seconds=int(os.getenv("LIBRARY_CACHE_SECONDS", "300")),
             navidrome_db_path=(Path(value) if (value := os.getenv("NAVIDROME_DB_PATH", "")) else None),
+            youtube_only=_flag("YOUTUBE_ONLY", False),
         )

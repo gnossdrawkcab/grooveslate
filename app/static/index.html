@@ -14,7 +14,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-12" />
+    <link rel="stylesheet" href="/styles.css?v=20260813-13" />
   </head>
   <body>
     <div class="noise"></div>
@@ -47,7 +47,7 @@
         </div>
         <section class="challenge-drawer hidden" id="challenge-drawer" aria-labelledby="challenge-title">
           <div class="challenge-heading">
-            <div><span>GROOVESLATE ROULETTE</span><h2 id="challenge-title">Pick a lane. Surrender the setlist.</h2><p>Every draw comes from the real genre tags in your music library.</p></div>
+            <div><span>GROOVESLATE ROULETTE</span><h2 id="challenge-title">Pick a lane. Surrender the setlist.</h2><p id="challenge-source-copy">Every draw comes from the real genre tags in your music library.</p></div>
             <button id="close-challenge" type="button" aria-label="Close challenge picker">×</button>
           </div>
           <div class="challenge-options">
@@ -95,9 +95,9 @@
             <button class="icon-button" id="refresh-button" title="Rescan library" aria-label="Rescan library">↻</button>
           </div>
           <div class="browser-tabs">
-            <button data-browser="library">Music library</button>
+            <button data-browser="library" data-library-only>Music library</button>
             <button class="active" data-browser="completed">Ready to practice</button>
-            <button data-browser="import">Import</button>
+            <button data-browser="import">Find songs</button>
           </div>
           <div class="import-panel hidden" id="import-panel">
             <form id="provider-search-form">
@@ -113,7 +113,7 @@
               <button class="import-action" type="submit">Import &amp; process</button>
             </form>
             <p class="import-notice">Only import media you’re permitted to use.</p>
-            <label class="upload-action">
+            <label class="upload-action" data-library-only>
               <span>Upload an audio file</span>
               <input id="audio-upload" type="file" accept="audio/*,.mp3,.flac,.wav,.m4a,.aac,.ogg,.opus" />
             </label>
@@ -376,11 +376,11 @@
     </main>
 
     <footer>
-      <span>LOSSLESS OUTPUT · READ-ONLY LIBRARY</span>
+      <span id="source-footer">LOSSLESS OUTPUT · READ-ONLY LIBRARY</span>
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-12" defer></script>
-    <script src="/practice.js?v=20260813-12" defer></script>
+    <script src="/app.js?v=20260813-13" defer></script>
+    <script src="/practice.js?v=20260813-13" defer></script>
   </body>
 </html>

@@ -18,7 +18,7 @@ from fastapi.staticfiles import StaticFiles
 from pydantic import BaseModel, Field
 
 from .config import Settings
-from .challenges import draw_challenge, draw_track, genre_options
+from .challenges import draw_challenge, draw_track, genre_options, youtube_challenge_query, youtube_genre_options
 from .community import CommunityStore
 from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
@@ -38,6 +38,7 @@ class MixRequest(BaseModel):
 class URLImportRequest(BaseModel):
     url: str
     title: str = ""
+    rights_confirmed: bool = False
 
 
 class ChartMarker(BaseModel):
@@ -263,6 +264,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             "user": request.state.user,
             "role": "admin" if request.state.user.casefold() in admin_keys else "member",
             "users": list(users),
+            "source_mode": "youtube" if config.youtube_only else "library",
         }
 
     @app.get("/api/health")
@@ -279,7 +281,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
 
     @app.get("/api/imports/capabilities")
     def import_capabilities() -> dict:
-        return imports.capabilities()
+        return {**imports.capabilities(), "youtube_only": config.youtube_only}
 
     @app.get("/api/imports/search")
     def search_imports(
@@ -294,6 +296,8 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
 
     @app.post("/api/imports/url", status_code=201)
     def import_url(payload: URLImportRequest) -> dict:
+        if config.youtube_only and not payload.rights_confirmed:
+            raise HTTPException(status_code=400, detail="Confirm that you own or have permission to use this media.")
         try:
             track = imports.import_url(
                 payload.url,
@@ -310,6 +314,9 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         file: UploadFile = File(...),
         title: str = Form(default=""),
     ) -> dict:
+        if config.youtube_only:
+            await file.close()
+            raise HTTPException(status_code=404, detail="Uploads are unavailable on this site")
         try:
             track = imports.import_upload(file.filename or "upload", file.file, title)
         except ValueError as exc:
@@ -325,6 +332,8 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         limit: int = Query(default=250, ge=1, le=1000),
         refresh: bool = False,
     ) -> dict:
+        if config.youtube_only:
+            raise HTTPException(status_code=404, detail="The server library is unavailable on this site")
         if refresh:
             library.scan(force=True)
         tracks = library.search(q, folder)
@@ -367,6 +376,9 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
 
     @app.get("/api/challenges/genres")
     def get_challenge_genres(request: Request) -> dict:
+        if config.youtube_only:
+            options = youtube_genre_options()
+            return {"genres": options, "ready_genres": [], "tagged_tracks": None, "source": "youtube"}
         tracks = library.scan()
         ready_ids = set(completed_jobs(request.state.user))
         return {
@@ -377,6 +389,24 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
 
     @app.post("/api/challenges/draw")
     def draw_song_challenge(payload: ChallengeDraw, request: Request) -> dict:
+        if config.youtube_only:
+            if payload.ready_only:
+                raise HTTPException(status_code=400, detail="Ready-only draws are unavailable in YouTube mode")
+            try:
+                results = imports.search(youtube_challenge_query(payload.genre), 12)
+            except KeyError:
+                raise HTTPException(status_code=400, detail="Choose a supported genre") from None
+            except (ValueError, json.JSONDecodeError) as exc:
+                raise HTTPException(status_code=400, detail=str(exc)) from None
+            if not results:
+                raise HTTPException(status_code=404, detail="YouTube returned no songs for that genre")
+            selected = results[int.from_bytes(os.urandom(2), "big") % len(results)]
+            return {
+                "track": {"id": selected.get("id", selected["url"]), "title": selected["title"], "artist": selected.get("channel", "YouTube"), "album": "YouTube challenge", "duration": selected.get("duration")},
+                "youtube_url": selected["url"],
+                "challenge": draw_challenge(),
+                "ready_job_id": None,
+            }
         tracks = library.scan()
         ready = completed_jobs(request.state.user)
         try:

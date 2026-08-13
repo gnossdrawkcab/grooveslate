@@ -615,6 +615,78 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
 .toast.show { transform: translateY(0); opacity: 1; }
 .empty-library { padding: 28px 10px; color: var(--muted); font-size: 11px; line-height: 1.6; }
 
+/* Readability pass: compact does not mean microscopic. Keep supporting text
+   comfortably legible on a laptop at arm's length and behind an e-kit. */
+body { font-size: 16px; }
+button, input, select { font-size: 14px; }
+.system-state, .user-chip, .switch-user,
+.sessions-heading span, .sessions-heading p,
+.practice-number, .practice-row .practice-stats span, .practice-row .practice-stats strong,
+.practice-tile-copy small, .practice-tile-copy span, .practice-stats span, .practice-stats strong,
+.challenge-heading span, .challenge-song small, .challenge-rule small,
+.challenge-options label > span, .genre-grid > span, .genre-grid button span, .genre-grid button b,
+.active-challenge span, .active-challenge p, .active-challenge em,
+.youtube-result small, .youtube-result > button,
+.community-person small, .community-song small, .groove-score small,
+.eyebrow, .step, .browser-tabs button, .completed-summary,
+.import-divider, .import-notice, .upload-action, #import-status,
+kbd, .folder-row select, .folder-row span, .search-source-heading,
+.track-index, .track-copy-mini small, .track-ext,
+.track-copy p, .track-copy > span, .share-button,
+.job-progress > div:first-child, .activity-log li, .sync-control button,
+.model-topline, .model-card h3 small, .time-row,
+.practice-tools button, .speed-control, .speed-select, .keyboard-hint,
+.session-heading span, .record-intro > span, .session-heading > strong,
+.workbench-tabs button b, .song-map-empty, .song-map-marker span,
+.cue-now-label, .cue-current small, .cue-bar > span,
+#cue-next span, #cue-next small,
+.listen-grid > div > span, .listen-grid li b,
+.chart-header > div > span, .chart-palette-group > span,
+#auto-map-song small, .chart-status span, .chart-status em, .chart-status button,
+.marker-palette button, .marker-form label, .record-routing label > span, .setting-card > span,
+.marker-form > button, .marker-row > button:first-child, .marker-row > button:first-child small,
+.marker-kind, .marker-copy strong i, .marker-copy small,
+.editor-heading span, .editor-grid label span,
+.tempo-card b, .tempo-card button, #refresh-inputs, #connect-midi, .toggle-card small,
+.secure-recording-warning, .input-status-row, .midi-learn > span, .midi-learn button,
+.midi-learn small, .latency-tip, .kit-pads button b, .kit-pads button span,
+.record-console span, .takes-heading, .take-copy small, .take-copy .take-score,
+.take-actions a, .take-actions button, .performance-detail summary,
+.performance-stats span, .section-scores b, .section-scores i, .analysis-note,
+.live-phase, .stem-mixer > span, .stem-buttons i, .stem-toggle, .build-mix,
+.model-meta, footer { font-size: 12px !important; }
+
+.home-command-bar > div > p:last-child, .sessions-heading p,
+.challenge-heading p, .challenge-card p, .youtube-results > p,
+.community-empty, .practice-empty p, .empty-library,
+.model-card p, .listen-grid p, .listen-grid li,
+.chart-header p, .take-copy strong, .marker-copy strong,
+.takes-list > p, .empty-note p { font-size: 14px !important; }
+
+.home-song-search input, .search input, .import-panel #url-import-input,
+.marker-form input, .take-details input, .record-routing select,
+.setting-card select, .editor-grid input, .editor-grid select { font-size: 15px !important; }
+
+.home-song-search button, .import-action, .open-practice,
+.challenge-card-actions button, .score-buttons button, .unpublish-take,
+.run-button, .workbench-tabs button, #auto-map-song span { font-size: 14px !important; }
+
+.practice-row { min-height: 74px; padding-top: 10px; padding-bottom: 10px; }
+.practice-row .practice-art { width: 50px; height: 50px; }
+.practice-row .practice-tile-copy h2 { font-size: 16px; }
+.practice-row audio { height: 40px; }
+.practice-row .open-practice { min-height: 40px; }
+.track { min-height: 54px; }
+.browser-tabs button { min-height: 42px; }
+.marker-row { min-height: 64px; }
+.kit-pads button { min-height: 66px; }
+.take-actions a, .take-actions button, .marker-actions button { min-height: 36px; }
+.cue-strip { min-height: 76px; }
+.cue-current strong { font-size: 18px; }
+.cue-current small { margin-top: 5px; }
+.chart-status span { min-width: 88px; }
+.toast { font-size: 14px; }
+
 @media (max-width: 900px) {
   .studio-hero { min-height: 0; grid-template-columns: 1fr; gap: 46px; padding: 58px 0; }
   .studio-hero-copy h1 { font-size: clamp(60px, 11vw, 90px); }
@@ -803,4 +875,23 @@ footer { height: 50px; padding: 0 3.4vw; display: flex; align-items: center; jus
   .marker-row { break-inside: avoid; border-color: #bbb; color: black; }
   .marker-row * { color: black !important; }
   .marker-row { grid-template-columns: 55px 60px 1fr 28px; }
+}
+
+.youtube-only .library-panel { grid-template-rows: auto auto auto auto 1fr; }
+.youtube-only .browser-tabs { grid-template-columns: 1fr 1fr; }
+.youtube-only .import-notice { color: var(--orange); font-weight: 700; }
+
+@media screen and (max-width: 620px) {
+  body { font-size: 17px; }
+  .brand { font-size: 13px; }
+  .practice-row { min-height: 82px; }
+  .practice-row .practice-art { width: 42px; height: 42px; }
+  .practice-row .practice-tile-copy h2 { font-size: 15px; }
+  .track { min-height: 56px; }
+  .browser-tabs button { min-height: 46px; }
+  .home-song-search input, .youtube-search input, .search input { font-size: 16px !important; }
+  .workbench-tabs button { font-size: 13px !important; }
+  .session-heading h4, .cue-current strong { font-size: 16px; }
+  .marker-row { min-height: 70px; }
+  .kit-pads button { min-height: 68px; }
 }

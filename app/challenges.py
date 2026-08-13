@@ -32,6 +32,11 @@ GENRE_LABELS = {
     "reggae-ska": "Reggae & Ska", "progressive": "Progressive",
 }
 
+YOUTUBE_CHALLENGE_QUERIES = {
+    key: (f"{label} drum play along", f"{label} drumless backing track", f"{label} song official audio")
+    for key, label in GENRE_LABELS.items()
+}
+
 CHALLENGES = (
     {"kind": "pocket", "title": "Pocket lock", "instruction": "Chart at least four sections, record a full take, and reach a Pocket score of 75.", "target": 75},
     {"kind": "improve", "title": "Beat your first take", "instruction": "Record two full takes. Keep take one honest, then improve your Pocket score on take two.", "target": 2},
@@ -65,6 +70,17 @@ def genre_options(tracks: list[Track], eligible_ids: set[str] | None = None) -> 
         {"id": key, "label": GENRE_LABELS[key], "count": counts.get(key, 0)}
         for key in GENRES
     ]
+
+
+def youtube_genre_options() -> list[dict]:
+    return [{"id": key, "label": GENRE_LABELS[key], "count": None} for key in GENRES]
+
+
+def youtube_challenge_query(genre: str) -> str:
+    try:
+        return choice(YOUTUBE_CHALLENGE_QUERIES[genre])
+    except KeyError:
+        raise KeyError(genre) from None
 
 
 def draw_track(tracks: list[Track], genre: str, eligible_ids: set[str] | None = None) -> Track:

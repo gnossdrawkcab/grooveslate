@@ -42,6 +42,7 @@ Environment variables:
 | `SCNET_MODEL_URL` | official MSST release | SCNet checkpoint |
 | `SCNET_CONFIG_URL` | official MSST release | SCNet configuration |
 | `MEDIA_EXTRACTOR_ENABLED` | `0` | Enable private `yt-dlp` URL importing and YouTube search |
+| `YOUTUBE_ONLY` | `0` | Run the same app without a mounted server library or uploads; challenges and discovery use YouTube |
 | `MAX_IMPORT_BYTES` | `262144000` | Maximum upload, direct download, or extracted audio size |
 | `MAX_IMPORT_DURATION_SECONDS` | `900` | Maximum duration accepted by the media extractor |
 | `APP_PASSWORD` | empty | Shared password required to enter the app |
@@ -95,6 +96,12 @@ only prepared drumless tracks, and GrooveSlate draws a random song plus a
 measurable mission. Missions cover pocket score, dynamics, charting, one-take
 commitment, and improving a second take; progress follows the player into the
 song workbench.
+
+With `YOUTUBE_ONLY=1`, the same 15 lanes draw from varied YouTube searches
+instead. The server-library API and uploads are disabled, and every import
+requires an explicit confirmation that the user owns or has permission to use
+the media. This deployment mode keeps the public site and private library site
+on one feature set without duplicating the application.
 
 ## YouTube and Community Takes
 
