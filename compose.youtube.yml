@@ -13,6 +13,8 @@ services:
       MUSIC_ROOT: /empty-music
       DATA_ROOT: /data
       YOUTUBE_ONLY: "1"
+      GPU_LOCK_PATH: /gpu-lock/separation.lock
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SCNET_ENABLED: "0"
       BS_ROFORMER_ENABLED: "1"
       MEDIA_EXTRACTOR_ENABLED: "1"
@@ -20,6 +22,7 @@ services:
       APP_ADMIN_USERS: ${APP_ADMIN_USERS:-Pat}
     volumes:
       - ${DATA_PATH:-./data}:/data
+      - ${GPU_LOCK_DIR:-./gpu-lock}:/gpu-lock
     deploy:
       resources:
         reservations:

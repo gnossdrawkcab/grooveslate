@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 from array import array
+from contextlib import contextmanager
 from copy import deepcopy
 from datetime import datetime, timezone
 from hashlib import sha256
@@ -11,11 +12,13 @@ from typing import Callable
 from urllib.request import urlopen
 from uuid import uuid4
 import json
+import fcntl
 import os
 import re
 import shutil
 import subprocess
 import sys
+import time
 
 from .config import Settings
 from .library import MusicLibrary, Track
@@ -135,6 +138,56 @@ class Processor:
         self.settings = settings
         self.library = library
         self.store = store
+
+    @contextmanager
+    def _gpu_lease(self, report: Callable[[str, int, str], None]):
+        """Serialize GPU models across every app sharing the lock mount."""
+        lock_path = self.settings.gpu_lock_path
+        lock_path.parent.mkdir(parents=True, exist_ok=True)
+        lock_file = lock_path.open("a+")
+        waiting_since = time.monotonic()
+        report("Waiting for GPU", 4, "Waiting for the shared GPU processing slot")
+        try:
+            while True:
+                try:
+                    fcntl.flock(lock_file.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+                    break
+                except BlockingIOError:
+                    waited = round(time.monotonic() - waiting_since)
+                    report(
+                        "Waiting for GPU",
+                        4,
+                        f"Another separation is using the GPU · waiting {waited}s",
+                    )
+                    time.sleep(2)
+            report("Model setup", 5, "Shared GPU slot acquired")
+            yield
+        finally:
+            fcntl.flock(lock_file.fileno(), fcntl.LOCK_UN)
+            lock_file.close()
+
+    def _run_gpu(
+        self,
+        command: list[str],
+        report: Callable[[str, int, str], None],
+        *,
+        cwd: Path | None = None,
+        on_output: Callable[[str, int | None], None] | None = None,
+    ) -> None:
+        with self._gpu_lease(report):
+            for attempt in range(2):
+                try:
+                    self._run(command, cwd=cwd, on_output=on_output)
+                    return
+                except RuntimeError as exc:
+                    if attempt or "cuda out of memory" not in str(exc).casefold():
+                        raise
+                    report(
+                        "Recovering GPU memory",
+                        5,
+                        "GPU memory was busy; retrying separation once",
+                    )
+                    time.sleep(5)
 
     def _run(
         self,
@@ -466,7 +519,7 @@ class Processor:
         separated = output_dir / "stems"
         separated.mkdir(parents=True, exist_ok=True)
         report("Separating stems", 20, "Loading SCNet XL IHF on the GPU")
-        self._run(
+        self._run_gpu(
             [
                 "python",
                 str(self.settings.msst_root / "inference.py"),
@@ -481,6 +534,7 @@ class Processor:
                 "--store_dir",
                 str(separated),
             ],
+            report,
             cwd=self.settings.msst_root,
             on_output=lambda line, percent: report(
                 "Separating stems",
@@ -500,7 +554,7 @@ class Processor:
         separated = output_dir / "stems"
         separated.mkdir(parents=True, exist_ok=True)
         report("Model setup", 5, "Checking the RoFormer checkpoint cache")
-        self._run(
+        self._run_gpu(
             [
                 "bs-roformer-infer",
                 "--input_folder",
@@ -508,6 +562,7 @@ class Processor:
                 "--store_dir",
                 str(separated),
             ],
+            report,
             on_output=lambda line, percent: report(
                 "Separating stems",
                 10 + int((percent or 0) * 0.8),

@@ -2,6 +2,7 @@ from pathlib import Path
 from array import array
 from dataclasses import replace
 from io import BytesIO
+import fcntl
 import shutil
 import sqlite3
 import subprocess
@@ -692,6 +693,49 @@ def test_queue_recovers_interrupted_job_without_resetting_complete_model(
     assert recovered["models"]["scnet"]["status"] == "complete"
     assert recovered["models"]["roformer"]["status"] == "queued"
     assert queue.queue.get_nowait() == job["id"]
+
+
+def test_gpu_lease_holds_configured_cross_process_lock(tmp_path: Path):
+    config = settings(tmp_path)
+    processor = Processor(
+        config,
+        MusicLibrary(config.music_root),
+        JobStore(config.data_root / "jobs"),
+    )
+    reports = []
+
+    with processor._gpu_lease(lambda *report: reports.append(report)):
+        contender = config.gpu_lock_path.open("a+")
+        with pytest.raises(BlockingIOError):
+            fcntl.flock(contender.fileno(), fcntl.LOCK_EX | fcntl.LOCK_NB)
+        contender.close()
+
+    assert reports[0][0] == "Waiting for GPU"
+    assert reports[-1] == ("Model setup", 5, "Shared GPU slot acquired")
+
+
+def test_gpu_runner_retries_cuda_oom_once(tmp_path: Path, monkeypatch):
+    config = settings(tmp_path)
+    processor = Processor(
+        config,
+        MusicLibrary(config.music_root),
+        JobStore(config.data_root / "jobs"),
+    )
+    attempts = []
+    reports = []
+
+    def run(*_args, **_kwargs):
+        attempts.append(1)
+        if len(attempts) == 1:
+            raise RuntimeError("torch.OutOfMemoryError: CUDA out of memory")
+
+    monkeypatch.setattr(processor, "_run", run)
+    monkeypatch.setattr("app.jobs.time.sleep", lambda _seconds: None)
+
+    processor._run_gpu(["model"], lambda *report: reports.append(report))
+
+    assert len(attempts) == 2
+    assert any(report[0] == "Recovering GPU memory" for report in reports)
 
 
 def test_processor_skips_complete_model_with_existing_output(

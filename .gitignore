@@ -6,5 +6,5 @@ __pycache__/
 *.py[cod]
 data/
 music/
+gpu-lock/
 graphify-out/
-

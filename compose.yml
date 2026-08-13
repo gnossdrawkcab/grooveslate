@@ -16,6 +16,8 @@ services:
       LIBRARY_CACHE_SECONDS: "300"
       NAVIDROME_DB_PATH: ${NAVIDROME_DB_PATH:-}
       JOB_TIMEOUT_SECONDS: "7200"
+      GPU_LOCK_PATH: /gpu-lock/separation.lock
+      PYTORCH_CUDA_ALLOC_CONF: expandable_segments:True
       SCNET_ENABLED: "0"
       BS_ROFORMER_ENABLED: "1"
       MEDIA_EXTRACTOR_ENABLED: ${MEDIA_EXTRACTOR_ENABLED:-0}
@@ -26,6 +28,7 @@ services:
     volumes:
       - ${MUSIC_PATH:-./music}:/music:ro
       - ${DATA_PATH:-./data}:/data
+      - ${GPU_LOCK_DIR:-./gpu-lock}:/gpu-lock
     deploy:
       resources:
         reservations:
