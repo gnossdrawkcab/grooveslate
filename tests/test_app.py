@@ -420,6 +420,7 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         assert published.status_code == 201
         publication = published.json()
         assert publication["owned"] is True
+        assert publication["mime_type"] == "audio/webm"
         assert client.get(publication["audio_url"]).content == b"recording" * 64
         assert client.put(
             f"/api/community/{publication['id']}/score", json={"score": 5}

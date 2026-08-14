@@ -237,12 +237,14 @@ function renderCommunity() {
     <article class="community-take">
       <div class="community-person"><span>${escapeHtml(take.owner.slice(0, 1).toUpperCase())}</span><div><strong>${escapeHtml(take.owner)}</strong><small>${new Date(take.published_at).toLocaleDateString()}</small></div></div>
       <div class="community-song"><strong>${escapeHtml(take.song_title)}</strong><small>${escapeHtml(take.song_artist || "GrooveSlate performance")} · ${escapeHtml(take.take_name)}</small></div>
-      <audio controls preload="metadata" src="${escapeHtml(take.audio_url)}"></audio>
+      ${String(take.mime_type || "").startsWith("video/")
+        ? `<video controls playsinline preload="metadata" src="${escapeHtml(take.audio_url)}"></video>`
+        : `<audio controls preload="metadata" src="${escapeHtml(take.audio_url)}"></audio>`}
       <div class="groove-score"><span>${take.score ?? "—"}</span><small>GROOVE · ${take.score_count} VOTE${take.score_count === 1 ? "" : "S"}</small></div>
       ${take.owned ? `<button class="unpublish-take" data-unpublish="${take.id}" type="button">Unpublish</button>` : `<div class="score-buttons" aria-label="Score ${escapeHtml(take.owner)}'s take">${[1,2,3,4,5].map((score) => `<button class="${take.your_score === score ? "active" : ""}" data-score-publication="${take.id}" data-score="${score}" type="button" title="${score} out of 5">${score}</button>`).join("")}</div>`}
     </article>`).join("");
-  $$(".community-take audio", list).forEach((audio) => audio.addEventListener("play", () => {
-    $$("audio").forEach((other) => { if (other !== audio) other.pause(); });
+  $$(".community-take audio, .community-take video", list).forEach((media) => media.addEventListener("play", () => {
+    $$("audio, video").forEach((other) => { if (other !== media) other.pause(); });
   }));
   $$('[data-score-publication]', list).forEach((button) => button.addEventListener("click", () => scoreCommunityTake(button.dataset.scorePublication, Number(button.dataset.score))));
   $$('[data-unpublish]', list).forEach((button) => button.addEventListener("click", () => unpublishCommunityTake(button.dataset.unpublish)));

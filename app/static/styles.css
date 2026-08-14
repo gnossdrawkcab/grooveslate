@@ -662,6 +662,7 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .take-copy .take-score b { font-size: 9px; }
 .take-row audio { display: block; width: 100%; height: 32px; color-scheme: dark; }
 .take-row video { display: block; width: 100%; max-height: 180px; background: #000; color-scheme: dark; }
+.community-take video { width: 100%; max-height: 180px; background: #000; }
 .take-actions { display: flex; gap: 5px; }
 .take-actions a, .take-actions button { min-width: 30px; height: 30px; padding: 0 7px; display: grid; place-items: center; border: 1px solid var(--line); background: transparent; color: var(--muted); font: 6px var(--mono); text-decoration: none; cursor: pointer; }
 .take-actions a:hover, .take-actions button:hover { border-color: var(--orange); color: var(--ink); }

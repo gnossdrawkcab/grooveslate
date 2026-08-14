@@ -67,6 +67,7 @@ class CommunityStore:
                     "take_name": take.get("name", "Take"),
                     "notes": take.get("notes", ""),
                     "duration": take.get("duration", 0),
+                    "mime_type": take.get("mime_type", "audio/webm"),
                     "analysis": take.get("analysis"),
                     "published_at": _now(),
                     "scores": {},

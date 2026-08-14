@@ -76,8 +76,9 @@
     const status = $("#score-load-status");
     status.textContent = message;
     status.classList.toggle("ready", ready);
+    const referenceCount = practiceState.scoreReference?.hits?.length || 0;
     $("#score-sync-status").textContent = ready
-      ? `${message} · alignment ${scoreOffset() >= 0 ? "+" : ""}${scoreOffset().toFixed(2)}s`
+      ? `${message} · alignment ${scoreOffset() >= 0 ? "+" : ""}${scoreOffset().toFixed(2)}s${referenceCount ? ` · ${referenceCount.toLocaleString()} authored drum hits` : ""}`
       : message;
   }
 
@@ -180,7 +181,7 @@
         ? { confidence: message.confidence, hits: Array.isArray(message.hits) ? message.hits : [] }
         : null;
       if (practiceState.scoreReference?.hits.length) {
-        $("#score-sync-status").textContent = `${practiceState.scoreReference.hits.length.toLocaleString()} authored drum hits ready for take grading`;
+        setScoreStatus($("#score-load-status").textContent, true);
       }
     } else if (message.type === "tabforge:track") {
       practiceState.scoreTrack = message.track || "selected part";
