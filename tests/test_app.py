@@ -343,12 +343,19 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
                     {"id": "chorus-1", "time": 42.5, "label": "Chorus", "note": "Crash", "kind": "chorus"},
                     {"id": "intro", "time": 0, "label": "Intro", "note": "", "kind": "intro"},
                 ],
-                "settings": {"bpm": 128, "count_in_bars": 1, "metronome": True, "backing_volume": 0.7},
+                "settings": {
+                    "bpm": 128, "count_in_bars": 1, "metronome": True,
+                    "backing_volume": 0.7, "score_sync": True,
+                    "score_offset_seconds": 1.25, "trainer_start": 0.6,
+                    "trainer_goal": 1.0, "trainer_step": 0.05,
+                    "trainer_passes": 2,
+                },
             },
         )
         assert chart.status_code == 200
         assert [marker["id"] for marker in chart.json()["markers"]] == ["intro", "chorus-1"]
         assert chart.json()["settings"]["bpm"] == 128
+        assert chart.json()["settings"]["score_offset_seconds"] == 1.25
 
         uploaded = client.post(
             f"/api/jobs/{job['id']}/practice/takes",
@@ -365,6 +372,8 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         assert take["name"] == "Take 1"
         assert take["analysis"]["hit_count"] == 1
         assert take["analysis"]["pieces"] == {"snare": 1}
+        assert take["analysis"]["timing_bias"] == "rushing"
+        assert take["analysis"]["velocity"]["consistency"] == 100
         assert client.get(take["audio_url"]).content == b"recording" * 64
         assert client.get(take["events_url"]).json()["events"][0]["note"] == 38
         midi = client.get(take["midi_url"])
@@ -491,8 +500,12 @@ def test_frontend_and_health(tmp_path: Path):
         assert 'class="solo-toggle"' in javascript
         assert 'soloed.length && !soloedSet.has(stem)' in javascript
         assert '<section class="custom-mixer">' in homepage.text
+        assert 'id="start-trainer"' in homepage.text
+        assert 'id="score-sync-enabled"' in homepage.text
+        assert 'id="record-camera"' in homepage.text
         assert "function applyPitch" in javascript
         assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
+        assert 'message.type === "tabforge:loop"' in client.get("/practice.js").text
         assert "Capture at the actual swap" in javascript
         assert 'url.includes("?") ? "&" : "?"' in javascript
         assert "current mix keeps playing" in javascript

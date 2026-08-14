@@ -81,6 +81,19 @@ stages: Listen, Chart, Practice, and Record. Drummers can add timestamped song
 sections and performance notes, use A/B loops, change playback speed, set a
 tempo, tap tempo, enable a metronome, and launch playback with a count-in.
 
+The embedded TabForge workspace is connected to the GrooveSlate recording
+clock. Clicking notation seeks the real stem mix, dragging a score passage
+creates the same A/B loop in GrooveSlate, and a saved per-song offset aligns
+tabs whose count-in differs from the recording. The selected score part can be
+removed from the broad stem mix with one action. Loop, speed, pitch, mute, and
+solo state are preserved in shareable song URLs.
+
+Guided Drill turns any chart section, score selection, or A/B range into a
+progressive tempo workout. Configure starting speed, goal speed, step size, and
+passes per step; GrooveSlate counts completed loop passes and advances the
+recording automatically. After MIDI takes, the weakest scored section becomes
+the suggested next drill.
+
 The chart is a drummer-focused road map with bar numbers, rehearsal marks,
 section lengths, dynamics, groove texture, and dedicated cues for fills, band
 hits, stops, pushes, ride/hat moves, builds, and half-time. Auto-map performs
@@ -105,6 +118,10 @@ grid consistency and dynamics by section, compares attempt scores, and exports
 standard MIDI for a DAW. Takes, notes, and the selected best take are saved
 under `${DATA_ROOT}/practice` and can only be accessed by their owner. See
 `app/static/drum-kit/LICENSE.md` for sample provenance.
+
+Camera Takes optionally combine a 720p browser camera track with the mixed
+backing and live drum audio. Audio-only and video takes share the same private
+library, best-take, download, and opt-in community publishing workflow.
 
 The MIDI kit includes a persistent per-browser MIDI Learn map for nonstandard
 e-kit note assignments. Snare velocity changes volume without swapping to a

@@ -1009,6 +1009,23 @@ function currentMixState(card) {
   return { muted, soloed, excluded };
 }
 
+function muteStemForScorePart(label) {
+  const card = $(".model-card[data-model='roformer']");
+  const value = String(label || "").toLowerCase();
+  const candidates = value.includes("drum") || value.includes("percussion")
+    ? ["drums"]
+    : value.includes("bass") ? ["bass"]
+    : value.includes("vocal") || value.includes("voice") ? ["vocals"]
+    : value.includes("guitar") ? ["guitar", "other"]
+    : value.includes("piano") || value.includes("key") || value.includes("synth") || value.includes("organ")
+      ? ["piano", "keys", "other"] : ["other"];
+  const button = candidates.map((stem) => $(`.stem-toggle[data-stem="${stem}"]`, card)).find(Boolean);
+  if (!button) return false;
+  $$(".solo-toggle.active", card).forEach((solo) => solo.click());
+  if (!button.classList.contains("removed")) button.click();
+  return button.dataset.stem;
+}
+
 function syncMixUrl(card) {
   if (!state.job || !window.location.pathname.startsWith("/songs/")) return;
   const { muted, soloed } = currentMixState(card);
@@ -1017,6 +1034,39 @@ function syncMixUrl(card) {
   if (soloed.length) url.searchParams.set("solo", soloed.join(","));
   else url.searchParams.delete("solo");
   window.history.replaceState({ jobId: state.job.id }, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function syncPracticeUrl(card) {
+  if (!state.job || !window.location.pathname.startsWith("/songs/")) return;
+  const url = new URL(window.location.href);
+  if (Number.isFinite(card._loopStart) && Number.isFinite(card._loopEnd)) {
+    url.searchParams.set("loop", `${card._loopStart.toFixed(2)}-${card._loopEnd.toFixed(2)}`);
+  } else {
+    url.searchParams.delete("loop");
+  }
+  const speed = Number($(".speed-select", card)?.value || $("audio", card)?.playbackRate || 1);
+  if (Math.abs(speed - 1) > 0.001) url.searchParams.set("speed", String(speed));
+  else url.searchParams.delete("speed");
+  const pitch = Number($(".pitch-select", card)?.value || 0);
+  if (pitch) url.searchParams.set("pitch", String(pitch));
+  else url.searchParams.delete("pitch");
+  window.history.replaceState({ jobId: state.job.id }, "", `${url.pathname}${url.search}${url.hash}`);
+}
+
+function selectPlaybackRate(rate, { announce = false } = {}) {
+  const card = $(".model-card[data-model='roformer']");
+  const audio = $("audio", card);
+  const select = $(".speed-select", card);
+  const value = Math.max(0.5, Math.min(1.25, Number(rate) || 1));
+  if (![...select.options].some((option) => Number(option.value) === value)) {
+    select.add(new Option(`${Math.round(value * 100)}%`, String(value)));
+  }
+  select.value = String(value);
+  audio.playbackRate = value;
+  syncPracticeUrl(card);
+  document.dispatchEvent(new CustomEvent("drumless:rate-changed", { detail: { rate: value } }));
+  if (announce) toast(`Playback speed: ${Math.round(value * 100)}%`);
+  return value;
 }
 
 function scheduleCustomMix(jobId, model, card) {
@@ -1217,6 +1267,8 @@ function resetPracticePlayer(card) {
   card.dataset.mixId = "";
   card.dataset.excluded = "drums";
   card.dataset.baseAudioUrl = "";
+  card.dataset.practiceUrlRestored = "false";
+  card.dataset.pitchUrlRestored = "false";
 }
 
 function setupPracticePlayer(card) {
@@ -1238,6 +1290,23 @@ function setupPracticePlayer(card) {
     bandScore.disabled = !ready;
     $$(".seek-button", card).forEach((button) => { button.disabled = !ready; });
     $(".duration", card).textContent = formatTime(audio.duration);
+    if (ready && card.dataset.practiceUrlRestored !== "true") {
+      card.dataset.practiceUrlRestored = "true";
+      const params = new URLSearchParams(window.location.search);
+      const rate = Number(params.get("speed"));
+      if (rate >= 0.5 && rate <= 1.25) selectPlaybackRate(rate);
+      const range = (params.get("loop") || "").match(/^([0-9.]+)-([0-9.]+)$/);
+      if (range && Number(range[2]) > Number(range[1])) {
+        setLoopRange(Number(range[1]), Math.min(Number(range[2]), audio.duration));
+      }
+      const linkedPitch = Number(params.get("pitch"));
+      if (Number.isInteger(linkedPitch) && linkedPitch >= -12 && linkedPitch <= 12 && linkedPitch !== 0
+          && card.dataset.pitchUrlRestored !== "true") {
+        card.dataset.pitchUrlRestored = "true";
+        pitch.value = String(linkedPitch);
+        applyPitch(card, false);
+      }
+    }
   };
 
   const updatePosition = () => {
@@ -1250,6 +1319,13 @@ function setupPracticePlayer(card) {
       && Number.isFinite(card._loopEnd)
       && audio.currentTime >= card._loopEnd
     ) {
+      const passAt = performance.now();
+      if (!card._lastLoopPassAt || passAt - card._lastLoopPassAt > 400) {
+        card._lastLoopPassAt = passAt;
+        document.dispatchEvent(new CustomEvent("drumless:loop-pass", {
+          detail: { start: card._loopStart, end: card._loopEnd, rate: audio.playbackRate },
+        }));
+      }
       audio.currentTime = card._loopStart;
     }
   };
@@ -1287,10 +1363,9 @@ function setupPracticePlayer(card) {
     });
   });
   speed.addEventListener("change", () => {
-    audio.playbackRate = Number(speed.value);
-    toast(`Playback speed: ${speed.value}×`);
+    selectPlaybackRate(Number(speed.value), { announce: true });
   });
-  pitch.addEventListener("change", () => applyPitch(card));
+  pitch.addEventListener("change", () => { syncPracticeUrl(card); applyPitch(card); });
   bandScore.addEventListener("click", () => {
     document.dispatchEvent(new CustomEvent("drumless:open-score"));
   });
@@ -1299,6 +1374,7 @@ function setupPracticePlayer(card) {
       card._loopStart = audio.currentTime;
       loop.textContent = `Set loop B · ${formatTime(card._loopStart)}`;
       loop.classList.add("active");
+      syncPracticeUrl(card);
       toast("Loop start set");
       return;
     }
@@ -1311,6 +1387,7 @@ function setupPracticePlayer(card) {
       loop.textContent = `Loop ${formatTime(card._loopStart)}–${formatTime(card._loopEnd)}`;
       audio.currentTime = card._loopStart;
       audio.play().catch(() => {});
+      syncPracticeUrl(card);
       toast("A/B loop is active");
       return;
     }
@@ -1318,6 +1395,7 @@ function setupPracticePlayer(card) {
     card._loopEnd = null;
     loop.textContent = "Set loop A";
     loop.classList.remove("active");
+    syncPracticeUrl(card);
     toast("Loop cleared");
   });
 }
@@ -1488,7 +1566,20 @@ function setLoopRange(start, end) {
   loop.disabled = false; loop.classList.add("active");
   loop.textContent = `Loop ${formatTime(start)}–${formatTime(end)}`;
   audio.currentTime = start;
+  syncPracticeUrl(card);
+  document.dispatchEvent(new CustomEvent("drumless:loop-changed", { detail: { start, end } }));
   audio.play().catch(() => {});
+}
+
+function clearLoopRange() {
+  const card = $(".model-card[data-model='roformer']");
+  const loop = $(".loop-button", card);
+  card._loopStart = null;
+  card._loopEnd = null;
+  loop.textContent = "Set loop A";
+  loop.classList.remove("active");
+  syncPracticeUrl(card);
+  document.dispatchEvent(new CustomEvent("drumless:loop-changed", { detail: null }));
 }
 
 let searchTimer;
@@ -1626,6 +1717,15 @@ window.DrumlessApp = {
   refreshCommunity: loadCommunity,
   updateChallengeProgress,
   setLoopRange,
+  clearLoopRange,
+  getLoopRange: () => {
+    const card = $(".model-card[data-model='roformer']");
+    return Number.isFinite(card?._loopStart) && Number.isFinite(card?._loopEnd)
+      ? { start: card._loopStart, end: card._loopEnd } : null;
+  },
+  setPlaybackRate: (rate, options) => selectPlaybackRate(rate, options),
+  getPlaybackRate: () => $(".model-card[data-model='roformer'] audio")?.playbackRate || 1,
+  muteStemForScorePart,
   beginActivity,
   updateActivity,
   endActivity,

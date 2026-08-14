@@ -7,6 +7,7 @@ from pathlib import Path
 from threading import Lock
 from uuid import uuid4
 import json
+import math
 import os
 import struct
 
@@ -50,21 +51,42 @@ def sanitize_midi_events(raw: object) -> list[dict]:
     return sorted(events, key=lambda event: event["time_ms"])
 
 
-def _timing_metrics(events: list[dict], bpm: int) -> dict:
+def _timing_metrics(events: list[dict], bpm: int, grid_offset_ms: float = 0) -> dict:
     notes = [event for event in events if event["kind"] == "note"]
     if not notes:
-        return {"mean_offset_ms": None, "pocket_score": None, "grid": "1/16"}
+        return {
+            "mean_offset_ms": None, "signed_offset_ms": None,
+            "timing_spread_ms": None, "timing_bias": None,
+            "pocket_score": None, "grid": "1/16",
+        }
     grid = 60_000 / max(30, min(bpm, 300)) / 4
-    phases = [event["time_ms"] % grid for event in notes]
-    candidates = phases if len(phases) <= 240 else phases[:: max(1, len(phases) // 240)]
-    def error(phase: float) -> float:
-        return sum(abs((value - phase + grid / 2) % grid - grid / 2) for value in phases) / len(phases)
-    mean_offset = min(error(phase) for phase in candidates)
+    offsets = [
+        (((event["time_ms"] - grid_offset_ms) + grid / 2) % grid) - grid / 2
+        for event in notes
+    ]
+    mean_offset = sum(abs(value) for value in offsets) / len(offsets)
+    signed_offset = sum(offsets) / len(offsets)
+    spread = math.sqrt(sum((value - signed_offset) ** 2 for value in offsets) / len(offsets))
     score = round(max(0, min(100, 100 - mean_offset / (grid / 2) * 100)))
-    return {"mean_offset_ms": round(mean_offset, 1), "pocket_score": score, "grid": "1/16"}
+    bias = "centered"
+    if signed_offset < -12:
+        bias = "rushing"
+    elif signed_offset > 12:
+        bias = "dragging"
+    return {
+        "mean_offset_ms": round(mean_offset, 1),
+        "signed_offset_ms": round(signed_offset, 1),
+        "timing_spread_ms": round(spread, 1),
+        "timing_bias": bias,
+        "pocket_score": score,
+        "grid": "1/16",
+    }
 
 
-def analyze_midi(events: list[dict], bpm: int, markers: list[dict], duration: float) -> dict:
+def analyze_midi(
+    events: list[dict], bpm: int, markers: list[dict], duration: float,
+    grid_offset_ms: float = 0,
+) -> dict:
     notes = [event for event in events if event["kind"] == "note"]
     velocities = [event["velocity"] for event in notes]
     pieces: dict[str, int] = {}
@@ -79,7 +101,7 @@ def analyze_midi(events: list[dict], bpm: int, markers: list[dict], duration: fl
         end = (float(boundaries[index + 1].get("time", duration)) * 1000
                if index + 1 < len(boundaries) else duration * 1000)
         section_events = [event for event in notes if start <= event["time_ms"] < end]
-        metrics = _timing_metrics(section_events, bpm)
+        metrics = _timing_metrics(section_events, bpm, grid_offset_ms)
         sections.append({
             "label": str(marker.get("label", "Section"))[:40],
             "start": round(start / 1000, 2),
@@ -96,9 +118,15 @@ def analyze_midi(events: list[dict], bpm: int, markers: list[dict], duration: fl
             "minimum": min(velocities) if velocities else None,
             "maximum": max(velocities) if velocities else None,
             "dynamic_range": max(velocities) - min(velocities) if velocities else None,
+            "consistency": (
+                round(max(0, 100 - math.sqrt(sum(
+                    (value - sum(velocities) / len(velocities)) ** 2
+                    for value in velocities
+                ) / len(velocities)) * 1.5)) if velocities else None
+            ),
         },
         "pieces": pieces,
-        **_timing_metrics(notes, bpm),
+        **_timing_metrics(notes, bpm, grid_offset_ms),
         "sections": sections,
     }
 
@@ -167,6 +195,12 @@ class PracticeStore:
                 "count_in_bars": 2,
                 "metronome": False,
                 "backing_volume": 0.8,
+                "score_sync": True,
+                "score_offset_seconds": 0,
+                "trainer_start": 0.6,
+                "trainer_goal": 1.0,
+                "trainer_step": 0.05,
+                "trainer_passes": 2,
             },
             "takes": [],
             "updated_at": _now(),

@@ -15,7 +15,7 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=DM+Mono:wght@400;500&family=Manrope:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <link rel="stylesheet" href="/styles.css?v=20260813-41" />
+    <link rel="stylesheet" href="/styles.css?v=20260814-42" />
   </head>
   <body>
     <div class="noise"></div>
@@ -261,7 +261,7 @@
                   <button data-workbench="chart" type="button"><b>02</b> Chart</button>
                   <button data-workbench="practice" type="button"><b>03</b> Practice</button>
                   <button data-workbench="record" type="button"><b>04</b> Record</button>
-                  <button data-workbench="score" type="button"><b>05</b> Score</button>
+                  <button data-workbench="score" type="button"><b>05</b> Tabs</button>
                 </div>
                 <div class="song-map" id="song-map" aria-label="Song chart timeline">
                   <canvas id="song-waveform" aria-hidden="true"></canvas>
@@ -353,6 +353,20 @@
                     <div class="countdown-display" id="countdown-display"><span>READY</span><small>Use the A/B loop and speed controls above for difficult sections.</small></div>
                     <button id="count-in-play" type="button">Count in &amp; play <span>▶</span></button>
                   </div>
+                  <section class="guided-drill" aria-labelledby="guided-drill-title">
+                    <div class="guided-drill-heading">
+                      <div><span>GUIDED DRILL</span><h5 id="guided-drill-title">Loop it. Clean it up. Bring it to tempo.</h5><p id="practice-prescription">Set an A/B loop above or loop a chart section to begin.</p></div>
+                      <strong id="trainer-stage">READY</strong>
+                    </div>
+                    <div class="trainer-controls">
+                      <label><span>START</span><select id="trainer-start"><option value="0.5">50%</option><option value="0.6" selected>60%</option><option value="0.7">70%</option><option value="0.75">75%</option><option value="0.8">80%</option><option value="0.9">90%</option></select></label>
+                      <label><span>GOAL</span><select id="trainer-goal"><option value="0.8">80%</option><option value="0.9">90%</option><option value="1" selected>100%</option><option value="1.1">110%</option><option value="1.25">125%</option></select></label>
+                      <label><span>STEP</span><select id="trainer-step"><option value="0.02">2%</option><option value="0.05" selected>5%</option><option value="0.1">10%</option></select></label>
+                      <label><span>PASSES</span><select id="trainer-passes"><option value="1">1 each</option><option value="2" selected>2 each</option><option value="3">3 each</option><option value="4">4 each</option></select></label>
+                      <button id="start-trainer" type="button">Start guided drill <span>▶</span></button>
+                    </div>
+                    <div class="trainer-progress"><i id="trainer-progress-fill"></i></div>
+                  </section>
                 </div>
 
                 <div class="workbench-panel" data-workbench-panel="record">
@@ -364,6 +378,8 @@
                     <button id="refresh-inputs" type="button">Enable audio</button>
                     <button id="connect-midi" type="button">Connect MIDI</button>
                   </div>
+                  <label class="camera-option"><input id="record-camera" type="checkbox" /><i></i><span><b>CAMERA TAKE</b><small>Record video with the mixed backing and your drum audio.</small></span></label>
+                  <video class="camera-preview hidden" id="camera-preview" muted playsinline></video>
                   <div class="input-status-row"><span id="audio-input-status">Audio input not enabled</span><span id="midi-input-status">MIDI not connected</span><span id="midi-last-hit">Last MIDI hit: —</span></div>
                   <div class="midi-learn">
                     <span>MIDI LEARN</span>
@@ -399,8 +415,17 @@
 
                 <div class="workbench-panel score-panel" data-workbench-panel="score">
                   <div class="score-panel-heading">
-                    <div><span>BAND MATERIAL · POWERED BY TABFORGE</span><h5>Tabs, notation, chords, lyrics, and parts</h5><p>The current song is searched automatically. Import or choose the best version, then practice without leaving GrooveSlate.</p></div>
-                    <button id="reload-band-score" type="button">Reload score</button>
+                    <div><span>BAND MATERIAL · POWERED BY TABFORGE</span><h5>Tabs, notation, chords, lyrics, and parts</h5><p>The score follows GrooveSlate’s recording. Tap a note to seek; drag measures to create the same loop in both players.</p></div>
+                    <div class="score-heading-actions"><strong id="score-load-status">SEARCH NOT STARTED</strong><button id="reload-band-score" type="button">Reload score</button></div>
+                  </div>
+                  <div class="score-sync-bar">
+                    <label class="score-sync-toggle"><input id="score-sync-enabled" type="checkbox" checked /><i></i><span>SYNC TAB TO RECORDING</span></label>
+                    <span id="score-sync-status">Open a full score to connect its timeline.</span>
+                    <button id="practice-score-part" type="button" disabled>Remove selected part</button>
+                    <button id="align-score-now" type="button" title="At a matching moment, pause both timelines and align them">Align current positions</button>
+                    <button id="nudge-score-back" type="button" title="Move score 100 ms earlier">Score −0.1s</button>
+                    <button id="nudge-score-forward" type="button" title="Move score 100 ms later">Score +0.1s</button>
+                    <button id="reset-score-alignment" type="button">Reset</button>
                   </div>
                   <div class="score-frame-shell">
                     <iframe id="band-score-frame" title="TabForge score workspace" loading="lazy" allow="autoplay; fullscreen" referrerpolicy="strict-origin-when-cross-origin"></iframe>
@@ -427,7 +452,7 @@
       <span>BS-ROFORMER-SW · SIX-STEM SEPARATION</span>
     </footer>
     <div class="toast" id="toast" role="status"></div>
-    <script src="/app.js?v=20260813-41" defer></script>
-    <script src="/practice.js?v=20260813-41" defer></script>
+    <script src="/app.js?v=20260814-42" defer></script>
+    <script src="/practice.js?v=20260814-42" defer></script>
   </body>
 </html>

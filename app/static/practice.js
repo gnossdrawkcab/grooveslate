@@ -15,6 +15,7 @@
     backingGain: null,
     mixDestination: null,
     micStream: null,
+    cameraStream: null,
     micSource: null,
     analyser: null,
     levelFrame: null,
@@ -39,7 +40,14 @@
     midiOverrides: new Map(),
     midiLearnTarget: null,
     snareCalibration: null,
+    scoreReady: false,
+    scorePosition: 0,
+    scoreClockFrame: null,
+    scoreLastSent: 0,
+    trainer: { active: false, passes: 0, rate: 1 },
   };
+
+  const TABFORGE_ORIGIN = "https://tabforge.pathtpc.xyz";
 
   try {
     const savedMap = JSON.parse(localStorage.getItem("grooveslate-midi-map") || "{}");
@@ -52,6 +60,111 @@
     if (name === "record") ensureDrumSamples().catch(() => {});
     if (name === "score") loadBandScore();
   }
+
+  function postToScore(type, detail = {}) {
+    const frame = $("#band-score-frame");
+    if (!frame?.contentWindow) return;
+    frame.contentWindow.postMessage({ source: "grooveslate", type, ...detail }, TABFORGE_ORIGIN);
+  }
+
+  function scoreOffset() {
+    return Number(settings().score_offset_seconds) || 0;
+  }
+
+  function setScoreStatus(message, ready = false) {
+    const status = $("#score-load-status");
+    status.textContent = message;
+    status.classList.toggle("ready", ready);
+    $("#score-sync-status").textContent = ready
+      ? `${message} · alignment ${scoreOffset() >= 0 ? "+" : ""}${scoreOffset().toFixed(2)}s`
+      : message;
+  }
+
+  function sendScoreClock(force = false) {
+    if (!practiceState.scoreReady || !settings().score_sync || !practiceState.audio) return;
+    const now = performance.now();
+    if (!force && now - practiceState.scoreLastSent < 90) return;
+    practiceState.scoreLastSent = now;
+    postToScore("grooveslate:clock", {
+      position: Math.max(0, practiceState.audio.currentTime - scoreOffset()),
+      duration: practiceState.audio.duration,
+      playing: !practiceState.audio.paused,
+      rate: practiceState.audio.playbackRate,
+    });
+  }
+
+  function runScoreClock() {
+    window.cancelAnimationFrame(practiceState.scoreClockFrame);
+    const tick = () => {
+      sendScoreClock();
+      if (practiceState.audio && !practiceState.audio.paused) {
+        practiceState.scoreClockFrame = window.requestAnimationFrame(tick);
+      }
+    };
+    tick();
+  }
+
+  function sendScoreLoop() {
+    const range = app.getLoopRange?.();
+    postToScore("grooveslate:loop", range ? {
+      start: Math.max(0, range.start - scoreOffset()),
+      end: Math.max(0, range.end - scoreOffset()),
+      enabled: true,
+    } : { enabled: false });
+  }
+
+  function saveScoreAlignment(offset) {
+    practiceState.session.settings.score_offset_seconds = Math.max(-120, Math.min(120, offset));
+    renderSettings();
+    scheduleSave();
+    sendScoreClock(true);
+  }
+
+  function handleScoreMessage(event) {
+    const frame = $("#band-score-frame");
+    if (event.origin !== TABFORGE_ORIGIN || event.source !== frame?.contentWindow
+        || event.data?.source !== "tabforge") return;
+    const message = event.data;
+    if (message.type === "tabforge:loading") {
+      setScoreStatus(message.message || "SEARCHING TAB SOURCES");
+    } else if (message.type === "tabforge:ready") {
+      practiceState.scoreReady = true;
+      practiceState.scorePosition = Number(message.position) || 0;
+      practiceState.scoreTrack = message.track || "selected part";
+      $("#practice-score-part").disabled = !message.track;
+      setScoreStatus(message.track ? `SYNCED · ${message.track}` : "SCORE READY", true);
+      sendScoreClock(true);
+      sendScoreLoop();
+    } else if (message.type === "tabforge:position") {
+      practiceState.scorePosition = Number(message.position) || 0;
+      if (message.requestId === "align" && practiceState.audio) {
+        saveScoreAlignment(practiceState.audio.currentTime - practiceState.scorePosition);
+        app.toast("Score aligned to the recording at this moment");
+      }
+    } else if (message.type === "tabforge:seek" && settings().score_sync && practiceState.audio) {
+      practiceState.audio.currentTime = Math.max(0, Math.min(
+        practiceState.audio.duration || Infinity,
+        (Number(message.position) || 0) + scoreOffset(),
+      ));
+      sendScoreClock(true);
+    } else if (message.type === "tabforge:loop" && settings().score_sync) {
+      const start = (Number(message.start) || 0) + scoreOffset();
+      const end = (Number(message.end) || 0) + scoreOffset();
+      if (end > start) {
+        app.setLoopRange?.(Math.max(0, start), Math.min(practiceState.audio?.duration || end, end));
+        setPanel("practice");
+        app.toast("Score selection is now your GrooveSlate practice loop");
+      }
+    } else if (message.type === "tabforge:loop-clear" && settings().score_sync) {
+      app.clearLoopRange?.();
+    } else if (message.type === "tabforge:track") {
+      practiceState.scoreTrack = message.track || "selected part";
+      $("#practice-score-part").disabled = false;
+      setScoreStatus(`SYNCED · ${message.track || "selected part"}`, true);
+    }
+  }
+
+  window.addEventListener("message", handleScoreMessage);
 
   function bandScoreUrl() {
     const track = practiceState.job?.track || {};
@@ -68,13 +181,19 @@
     const frame = $("#band-score-frame");
     const url = bandScoreUrl();
     if (force || frame.dataset.song !== url) {
+      practiceState.scoreReady = false;
+      setScoreStatus("SEARCHING TABFORGE…");
       frame.dataset.song = url;
       frame.src = force ? `${url}&reload=${Date.now()}` : url;
     }
   }
 
   function settings() {
-    return practiceState.session?.settings || { bpm: 120, count_in_bars: 2, metronome: false, backing_volume: 0.8 };
+    return practiceState.session?.settings || {
+      bpm: 120, count_in_bars: 2, metronome: false, backing_volume: 0.8,
+      score_sync: true, score_offset_seconds: 0,
+      trainer_start: 0.6, trainer_goal: 1, trainer_step: 0.05, trainer_passes: 2,
+    };
   }
 
   function markerId() {
@@ -381,7 +500,101 @@
     $("#count-in-bars").value = value.count_in_bars;
     $("#metronome-enabled").checked = value.metronome;
     $("#backing-volume").value = value.backing_volume;
+    $("#score-sync-enabled").checked = value.score_sync !== false;
+    $("#trainer-start").value = String(value.trainer_start ?? 0.6);
+    $("#trainer-goal").value = String(value.trainer_goal ?? 1);
+    $("#trainer-step").value = String(value.trainer_step ?? 0.05);
+    $("#trainer-passes").value = String(value.trainer_passes ?? 2);
     if (practiceState.audio) practiceState.audio.volume = value.backing_volume;
+    if (practiceState.scoreReady) setScoreStatus($("#score-load-status").textContent, true);
+    renderPracticePrescription();
+  }
+
+  function weakestSection() {
+    const scored = (practiceState.session?.takes || []).find((take) => take.analysis?.sections?.length);
+    if (!scored) return null;
+    return scored.analysis.sections
+      .filter((section) => Number.isFinite(section.pocket_score) && section.end > section.start)
+      .sort((a, b) => a.pocket_score - b.pocket_score)[0] || null;
+  }
+
+  function renderPracticePrescription() {
+    const copy = $("#practice-prescription");
+    const weak = weakestSection();
+    if (weak) {
+      const bias = weak.timing_bias && weak.timing_bias !== "centered" ? `; you are ${weak.timing_bias}` : "";
+      copy.innerHTML = `Suggested next: <button type="button" id="practice-weakest">${app.escapeHtml(weak.label)}</button> scored ${weak.pocket_score}. Loop it at ${Math.round((settings().trainer_start ?? .6) * 100)}%${bias}.`;
+      $("#practice-weakest").addEventListener("click", () => {
+        app.setLoopRange?.(weak.start, weak.end);
+        app.toast(`${weak.label} loaded as your next drill`);
+      });
+      return;
+    }
+    copy.textContent = app.getLoopRange?.()
+      ? "Your A/B loop is ready. GrooveSlate will repeat it and raise the tempo after clean passes."
+      : "Set an A/B loop above, drag measures in Tabs, or loop a chart section to begin.";
+  }
+
+  function setTrainerProgress() {
+    const trainer = practiceState.trainer;
+    const start = Number(settings().trainer_start) || .6;
+    const goal = Math.max(start, Number(settings().trainer_goal) || 1);
+    const progress = goal === start ? 100 : (trainer.rate - start) / (goal - start) * 100;
+    $("#trainer-progress-fill").style.width = `${Math.max(0, Math.min(100, progress))}%`;
+    const stage = $("#trainer-stage");
+    stage.classList.toggle("active", trainer.active);
+    stage.textContent = trainer.active
+      ? `${Math.round(trainer.rate * 100)}% · PASS ${trainer.passes + 1}/${settings().trainer_passes}`
+      : trainer.completed ? "MASTERED" : "READY";
+    $("#start-trainer").innerHTML = trainer.active ? "Stop drill <span>■</span>" : "Start guided drill <span>▶</span>";
+  }
+
+  async function toggleTrainer() {
+    if (practiceState.trainer.active) {
+      practiceState.trainer.active = false;
+      practiceState.audio?.pause();
+      setTrainerProgress();
+      return;
+    }
+    const range = app.getLoopRange?.();
+    if (!range) return app.toast("Set an A/B loop or choose a chart section first");
+    const start = Number(settings().trainer_start) || .6;
+    const goal = Number(settings().trainer_goal) || 1;
+    if (goal < start) return app.toast("Trainer goal must be at least the starting speed");
+    practiceState.trainer = { active: true, completed: false, passes: 0, rate: start };
+    app.setPlaybackRate?.(start);
+    practiceState.audio.currentTime = range.start;
+    setTrainerProgress();
+    try {
+      await runCountIn();
+      await practiceState.audio.play();
+    } catch (error) {
+      practiceState.trainer.active = false;
+      setTrainerProgress();
+      app.toast(error.message);
+    }
+  }
+
+  function advanceTrainer() {
+    const trainer = practiceState.trainer;
+    if (!trainer.active) return;
+    trainer.passes += 1;
+    const passesNeeded = Number(settings().trainer_passes) || 2;
+    if (trainer.passes >= passesNeeded) {
+      trainer.passes = 0;
+      const goal = Number(settings().trainer_goal) || 1;
+      if (trainer.rate >= goal - .001) {
+        trainer.active = false;
+        trainer.completed = true;
+        practiceState.audio.pause();
+        app.toast(`Drill complete at ${Math.round(goal * 100)}% — record a full take next`);
+      } else {
+        trainer.rate = Math.min(goal, trainer.rate + (Number(settings().trainer_step) || .05));
+        app.setPlaybackRate?.(trainer.rate);
+        app.toast(`Clean set — moving to ${Math.round(trainer.rate * 100)}%`);
+      }
+    }
+    setTrainerProgress();
   }
 
   function renderTakes() {
@@ -404,14 +617,16 @@
       <article class="take-row">
         <button class="best-take ${take.best ? "active" : ""}" data-best-take="${take.id}" type="button" title="${take.best ? "Best take" : "Mark as best take"}">★</button>
         <div class="take-copy"><strong>${app.escapeHtml(take.name)}</strong><small>${new Date(take.created_at).toLocaleString()}${take.notes ? ` · ${app.escapeHtml(take.notes)}` : ""}</small>${analysis ? `<span class="take-score"><b>${analysis.pocket_score}</b> POCKET${delta === null ? "" : ` · ${delta >= 0 ? "+" : ""}${delta} VS PRIOR`}${analysis.pocket_score === bestScore ? " · TOP SCORE" : ""}</span>` : ""}</div>
-        <audio controls preload="metadata" src="${app.escapeHtml(take.audio_url)}"></audio>
+        ${String(take.mime_type || "").startsWith("video/")
+          ? `<video controls playsinline preload="metadata" src="${app.escapeHtml(take.audio_url)}"></video>`
+          : `<audio controls preload="metadata" src="${app.escapeHtml(take.audio_url)}"></audio>`}
         <div class="take-actions">${take.publication ? `<button class="published-take" data-unpublish-take="${take.publication.id}" type="button" title="Published to Community Takes; click to make private">PUBLIC</button>` : `<button data-publish-take="${take.id}" type="button" title="Publish this take for other signed-in drummers to score">PUBLISH</button>`}${take.midi_url ? `<a href="${app.escapeHtml(take.midi_url)}" title="Download editable MIDI">MIDI</a>` : ""}<a href="${app.escapeHtml(take.download_url)}" title="Download take">AUDIO</a><button data-delete-take="${take.id}" type="button" title="Delete take">×</button></div>
-        ${analysis ? `<details class="performance-detail"><summary>Performance map &amp; section analysis <span>${analysis.hit_count} hits · ${analysis.mean_offset_ms}ms mean grid offset</span></summary><canvas class="take-performance-map" data-take-map="${take.id}" tabindex="0" aria-label="Waveform-aligned MIDI hits"></canvas><div class="performance-stats"><span><b>${analysis.velocity.average ?? "—"}</b> AVG VELOCITY</span><span><b>${analysis.velocity.dynamic_range ?? "—"}</b> DYNAMIC RANGE</span><span><b>${analysis.hit_count}</b> MIDI HITS</span><span><b>${analysis.bpm}</b> ANALYSIS BPM</span></div><div class="section-scores">${analysis.sections.map((section) => `<span><b>${app.escapeHtml(section.label)}</b><i>${section.hits} hits</i><strong>${section.pocket_score ?? "—"}</strong></span>`).join("")}</div><p class="analysis-note">Pocket measures consistency against the nearest 1/16-note grid at your configured BPM. It does not judge musical choices.</p></details>` : ""}
+        ${analysis ? `<details class="performance-detail"><summary>Performance map &amp; section analysis <span>${analysis.hit_count} hits · ${analysis.mean_offset_ms}ms mean grid error · ${analysis.timing_bias || "timing mapped"}</span></summary><canvas class="take-performance-map" data-take-map="${take.id}" tabindex="0" aria-label="Waveform-aligned MIDI hits"></canvas><div class="performance-stats"><span><b>${analysis.velocity.average ?? "—"}</b> AVG VELOCITY</span><span><b>${analysis.velocity.consistency ?? "—"}</b> DYNAMIC CONTROL</span><span><b>${analysis.signed_offset_ms == null ? "—" : `${analysis.signed_offset_ms > 0 ? "+" : ""}${analysis.signed_offset_ms}ms`}</b> ${analysis.timing_bias === "rushing" ? "EARLY / RUSH" : analysis.timing_bias === "dragging" ? "LATE / DRAG" : "TIMING CENTER"}</span><span><b>${analysis.timing_spread_ms ?? "—"}ms</b> TIMING SPREAD</span></div><div class="section-scores">${analysis.sections.map((section) => `<button type="button" data-drill-start="${section.start}" data-drill-end="${section.end}" title="Practice this section"><b>${app.escapeHtml(section.label)}</b><i>${section.hits} hits · ${section.timing_bias || "mapped"}</i><strong>${section.pocket_score ?? "—"}</strong></button>`).join("")}</div><p class="analysis-note">Pocket measures timing against the configured sixteenth-note grid. Click a section score to turn it into your next drill. Score-reference missed/extra-note grading appears when a synchronized drum score supplies a reference part.</p></details>` : ""}
       </article>`;
     }).join("");
-    $$(".take-row audio", list).forEach((player) => player.addEventListener("play", () => {
+    $$(".take-row audio, .take-row video", list).forEach((player) => player.addEventListener("play", () => {
       practiceState.audio?.pause();
-      $$(".take-row audio", list).forEach((other) => { if (other !== player) other.pause(); });
+      $$(".take-row audio, .take-row video", list).forEach((other) => { if (other !== player) other.pause(); });
     }));
     $$('[data-best-take]', list).forEach((button) => button.addEventListener("click", () => updateTake(button.dataset.bestTake, { best: true })));
     $$('[data-publish-take]', list).forEach((button) => button.addEventListener("click", () => publishTake(button.dataset.publishTake)));
@@ -425,6 +640,12 @@
       } catch (error) { app.toast(error.message); }
     }));
     $$('[data-take-map]', list).forEach((canvas) => loadTakePerformance(canvas));
+    $$('[data-drill-start]', list).forEach((button) => button.addEventListener("click", () => {
+      app.setLoopRange?.(Number(button.dataset.drillStart), Number(button.dataset.drillEnd));
+      setPanel("practice");
+      app.toast("Weak section loaded into Guided Drill");
+    }));
+    renderPracticePrescription();
     app.updateChallengeProgress?.(practiceState.session);
   }
 
@@ -456,7 +677,7 @@
         if (event.currentTarget.open) window.requestAnimationFrame(() => drawTakePerformance(canvas, take));
       });
       canvas.addEventListener("click", (event) => {
-        const player = canvas.closest(".take-row").querySelector("audio");
+        const player = canvas.closest(".take-row").querySelector("audio, video");
         const rect = canvas.getBoundingClientRect();
         player.currentTime = Math.max(0, Math.min(take.duration, (event.clientX - rect.left) / rect.width * take.duration));
       });
@@ -548,12 +769,20 @@
       $$(".song-map-marker").forEach((button) => button.classList.toggle("active", button.dataset.markerId === active));
       updateWaveformPlayhead();
       updateCueStrip();
+      sendScoreClock();
     });
     audio.addEventListener("play", () => {
       requestWakeLock();
       if (settings().metronome && !practiceState.recorder) startMetronome();
+      runScoreClock();
     });
-    audio.addEventListener("pause", () => { stopMetronome(); releaseWakeLock(); });
+    audio.addEventListener("pause", () => {
+      stopMetronome(); releaseWakeLock();
+      window.cancelAnimationFrame(practiceState.scoreClockFrame);
+      sendScoreClock(true);
+    });
+    audio.addEventListener("seeked", () => sendScoreClock(true));
+    audio.addEventListener("ratechange", () => sendScoreClock(true));
     audio.addEventListener("ended", () => { if (practiceState.recorder?.state === "recording") stopRecording(); });
   }
 
@@ -835,6 +1064,28 @@
     $("#audio-input-status").textContent = `Audio ready · ${track.label || "default input"}`;
   }
 
+  async function enableCamera() {
+    if (!navigator.mediaDevices?.getUserMedia) throw new Error("Camera recording is not supported in this browser");
+    practiceState.cameraStream?.getTracks().forEach((track) => track.stop());
+    practiceState.cameraStream = await navigator.mediaDevices.getUserMedia({
+      video: { facingMode: "user", width: { ideal: 1280 }, height: { ideal: 720 }, frameRate: { ideal: 30 } },
+      audio: false,
+    });
+    const preview = $("#camera-preview");
+    preview.srcObject = practiceState.cameraStream;
+    preview.classList.remove("hidden");
+    await preview.play().catch(() => {});
+  }
+
+  function disableCamera() {
+    practiceState.cameraStream?.getTracks().forEach((track) => track.stop());
+    practiceState.cameraStream = null;
+    const preview = $("#camera-preview");
+    preview.pause();
+    preview.srcObject = null;
+    preview.classList.add("hidden");
+  }
+
   async function populateInputs() {
     if (!navigator.mediaDevices?.enumerateDevices) return;
     const current = $("#audio-input-device").value;
@@ -946,8 +1197,11 @@
     captureMidi({ kind: "note", note, velocity, channel: 9 });
   }
 
-  function supportedMimeType() {
-    return ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"]
+  function supportedMimeType(withVideo = false) {
+    const types = withVideo
+      ? ["video/webm;codecs=vp9,opus", "video/webm;codecs=vp8,opus", "video/webm", "video/mp4"]
+      : ["audio/webm;codecs=opus", "audio/mp4", "audio/webm", "audio/ogg;codecs=opus"];
+    return types
       .find((type) => window.MediaRecorder?.isTypeSupported(type)) || "";
   }
 
@@ -961,6 +1215,8 @@
       await ensureAudioContext();
       if (["audio", "both"].includes(mode) && !practiceState.micStream) await enableAudioInput();
       if (["midi", "both"].includes(mode) && !practiceState.midiAccess) await connectMidi();
+      const withVideo = $("#record-camera").checked;
+      if (withVideo && !practiceState.cameraStream) await enableCamera();
       if (practiceState.micSource) {
         practiceState.micSource.disconnect();
         if (["audio", "both"].includes(mode)) practiceState.micSource.connect(practiceState.mixDestination);
@@ -969,10 +1225,18 @@
       practiceState.audio.pause(); practiceState.audio.currentTime = 0;
       $("#record-status").textContent = "Count-in…";
       await runCountIn();
-      const mimeType = supportedMimeType();
+      const mimeType = supportedMimeType(withVideo);
       practiceState.chunks = [];
       practiceState.midiEvents = [];
-      practiceState.recorder = new MediaRecorder(practiceState.mixDestination.stream, mimeType ? { mimeType, audioBitsPerSecond: 192000 } : undefined);
+      const recordingStream = withVideo
+        ? new MediaStream([
+            ...practiceState.mixDestination.stream.getAudioTracks(),
+            ...practiceState.cameraStream.getVideoTracks(),
+          ])
+        : practiceState.mixDestination.stream;
+      practiceState.recorder = new MediaRecorder(recordingStream, mimeType ? {
+        mimeType, audioBitsPerSecond: 192000, videoBitsPerSecond: 5_000_000,
+      } : undefined);
       practiceState.recorder.ondataavailable = (event) => { if (event.data.size) practiceState.chunks.push(event.data); };
       practiceState.recorder.onstop = uploadTake;
       practiceState.recorder.start(250);
@@ -980,7 +1244,9 @@
       practiceState.recordingTimer = window.setInterval(updateRecordClock, 250);
       $("#record-take").classList.add("recording");
       $("#record-take span").textContent = "Stop & save take";
-      $("#record-status").textContent = mode === "midi" ? "Recording backing + MIDI kit" : "Recording backing + drum input";
+      $("#record-status").textContent = withVideo
+        ? "Recording camera + backing + performance"
+        : mode === "midi" ? "Recording backing + MIDI kit" : "Recording backing + drum input";
       $("#record-take").disabled = false;
       await practiceState.audio.play();
       if (settings().metronome) startMetronome();
@@ -1011,7 +1277,8 @@
     const mimeType = recorder.mimeType || "audio/webm";
     const blob = new Blob(practiceState.chunks, { type: mimeType });
     const form = new FormData();
-    form.append("file", blob, mimeType.includes("mp4") ? "take.m4a" : "take.webm");
+    const video = mimeType.startsWith("video/");
+    form.append("file", blob, video ? (mimeType.includes("mp4") ? "take.mp4" : "take.webm") : (mimeType.includes("mp4") ? "take.m4a" : "take.webm"));
     form.append("name", $("#take-name").value.trim() || `Take ${(practiceState.session.takes?.length || 0) + 1}`);
     form.append("notes", $("#take-notes").value.trim());
     form.append("duration", String(duration));
@@ -1071,18 +1338,35 @@
     addMarker($("#marker-label").value, practiceState.markerKind, $("#marker-note").value);
     $("#marker-label").value = ""; $("#marker-note").value = "";
   });
-  ["#practice-bpm", "#count-in-bars", "#metronome-enabled", "#backing-volume"].forEach((selector) => {
+  ["#practice-bpm", "#count-in-bars", "#metronome-enabled", "#backing-volume", "#score-sync-enabled",
+    "#trainer-start", "#trainer-goal", "#trainer-step", "#trainer-passes"].forEach((selector) => {
     $(selector).addEventListener("change", () => {
       practiceState.session.settings = {
+        ...practiceState.session.settings,
         bpm: Number($("#practice-bpm").value),
         count_in_bars: Number($("#count-in-bars").value),
         metronome: $("#metronome-enabled").checked,
         backing_volume: Number($("#backing-volume").value),
+        score_sync: $("#score-sync-enabled").checked,
+        score_offset_seconds: scoreOffset(),
+        trainer_start: Number($("#trainer-start").value),
+        trainer_goal: Number($("#trainer-goal").value),
+        trainer_step: Number($("#trainer-step").value),
+        trainer_passes: Number($("#trainer-passes").value),
       };
       practiceState.audio.volume = practiceState.session.settings.backing_volume;
+      renderPracticePrescription();
+      sendScoreClock(true);
       scheduleSave();
     });
   });
+  $("#start-trainer").addEventListener("click", toggleTrainer);
+  document.addEventListener("drumless:loop-pass", advanceTrainer);
+  document.addEventListener("drumless:loop-changed", () => {
+    renderPracticePrescription();
+    sendScoreLoop();
+  });
+  document.addEventListener("drumless:rate-changed", () => sendScoreClock(true));
   $("#tap-tempo").addEventListener("click", () => {
     const now = performance.now();
     practiceState.tapTimes = practiceState.tapTimes.filter((time) => now - time < 2500);
@@ -1100,6 +1384,13 @@
   $("#refresh-inputs").addEventListener("click", () => enableAudioInput().catch((error) => app.toast(error.message)));
   $("#audio-input-device").addEventListener("change", () => { if (practiceState.micStream) enableAudioInput().catch((error) => app.toast(error.message)); });
   $("#connect-midi").addEventListener("click", () => connectMidi().catch((error) => app.toast(error.message)));
+  $("#record-camera").addEventListener("change", (event) => {
+    if (event.currentTarget.checked) enableCamera().catch((error) => {
+      event.currentTarget.checked = false;
+      app.toast(error.message);
+    });
+    else disableCamera();
+  });
   $("#arm-midi-learn").addEventListener("click", () => {
     if (practiceState.midiLearnTarget) {
       practiceState.midiLearnTarget = null;
@@ -1163,7 +1454,7 @@
   const secureRecording = window.isSecureContext || ["localhost", "127.0.0.1"].includes(window.location.hostname);
   if (!secureRecording) {
     $("#secure-recording-warning").classList.remove("hidden");
-    ["#record-take", "#refresh-inputs", "#connect-midi"].forEach((selector) => { $(selector).disabled = true; });
+    ["#record-take", "#refresh-inputs", "#connect-midi", "#record-camera"].forEach((selector) => { $(selector).disabled = true; });
     $("#record-status").textContent = "Open GrooveSlate over HTTPS to record";
   }
 
@@ -1178,9 +1469,28 @@
     if (practiceState.recorder?.state === "recording") stopRecording();
     studio.classList.add("hidden");
     releaseWakeLock();
+    disableCamera();
+    window.cancelAnimationFrame(practiceState.scoreClockFrame);
+    practiceState.scoreReady = false;
     practiceState.job = null; practiceState.session = null; practiceState.waveform = null; practiceState.waveformJobId = null;
   });
   $("#reload-band-score").addEventListener("click", () => loadBandScore(true));
+  $("#band-score-frame").addEventListener("load", () => {
+    setScoreStatus("TABFORGE LOADED · CHOOSE A FULL SCORE");
+    postToScore("grooveslate:hello", { version: 1 });
+  });
+  $("#align-score-now").addEventListener("click", () => {
+    if (!practiceState.scoreReady) return app.toast("Open a full score first");
+    postToScore("grooveslate:position-request", { requestId: "align" });
+  });
+  $("#practice-score-part").addEventListener("click", () => {
+    const stem = app.muteStemForScorePart?.(practiceState.scoreTrack);
+    if (stem) app.toast(`${stem} removed so you can play the selected score part`);
+    else app.toast("This separation does not have a matching broad stem");
+  });
+  $("#nudge-score-back").addEventListener("click", () => saveScoreAlignment(scoreOffset() - .1));
+  $("#nudge-score-forward").addEventListener("click", () => saveScoreAlignment(scoreOffset() + .1));
+  $("#reset-score-alignment").addEventListener("click", () => saveScoreAlignment(0));
   document.addEventListener("visibilitychange", () => {
     if (document.visibilityState === "visible" && practiceState.audio && !practiceState.audio.paused) requestWakeLock();
   });

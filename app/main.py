@@ -75,6 +75,12 @@ class PracticeSettings(BaseModel):
     count_in_bars: int = Field(default=2, ge=0, le=4)
     metronome: bool = False
     backing_volume: float = Field(default=0.8, ge=0, le=1)
+    score_sync: bool = True
+    score_offset_seconds: float = Field(default=0, ge=-120, le=120)
+    trainer_start: float = Field(default=0.6, ge=0.5, le=1.25)
+    trainer_goal: float = Field(default=1.0, ge=0.5, le=1.25)
+    trainer_step: float = Field(default=0.05, ge=0.01, le=0.25)
+    trainer_passes: int = Field(default=2, ge=1, le=10)
 
 
 class PracticeUpdate(BaseModel):
@@ -840,6 +846,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             int(session["settings"].get("bpm", 120)),
             session.get("markers", []),
             take_duration,
+            float((session.get("auto_map", {}).get("beats") or [0])[0]) * 1000,
         ) if events else None
         take, destination = practice.create_take(
             request.state.user,
