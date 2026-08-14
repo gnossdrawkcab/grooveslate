@@ -457,6 +457,12 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .score-sync-bar > span { min-width: 180px; flex: 1; color: var(--muted); font: 7px/1.4 var(--mono); }
 .score-sync-bar button { min-height: 32px; padding: 0 9px; border: 1px solid var(--line); background: var(--paper); color: var(--ink); font: 7px var(--mono); cursor: pointer; }
 .score-sync-bar button:hover { border-color: var(--orange); }
+.pro-score-handoff { display: flex; align-items: center; justify-content: space-between; gap: 18px; padding: 12px 18px; border-bottom: 1px solid color-mix(in srgb, var(--orange) 35%, var(--line)); background: color-mix(in srgb, var(--orange) 7%, var(--paper)); }
+.pro-score-handoff strong { display: block; margin-bottom: 4px; color: var(--orange); font: 700 8px var(--mono); letter-spacing: .08em; }
+.pro-score-handoff p { max-width: 900px; margin: 0; color: var(--muted); font-size: 10px; line-height: 1.5; }
+.pro-score-handoff p b { color: var(--ink); }
+.pro-score-handoff a { flex: 0 0 auto; min-height: 36px; display: inline-flex; align-items: center; padding: 0 13px; border: 1px solid var(--orange); color: var(--ink); font: 700 8px var(--mono); text-decoration: none; }
+.pro-score-handoff a:hover { background: var(--orange); color: #0a0a0b; }
 .score-sync-toggle { display: flex; align-items: center; gap: 7px; color: var(--ink); font: 7px var(--mono); cursor: pointer; }
 .score-sync-toggle input { position: absolute; opacity: 0; }
 .score-sync-toggle i { width: 28px; height: 16px; border-radius: 12px; background: var(--line); }
@@ -949,6 +955,8 @@ kbd, .folder-row select, .folder-row span, .search-source-heading,
   .score-heading-actions { justify-content: space-between; }
   .score-sync-bar { flex-wrap: wrap; padding: 9px 13px; }
   .score-sync-bar > span { flex-basis: 100%; order: 2; }
+  .pro-score-handoff { align-items: stretch; flex-direction: column; padding: 12px 13px; }
+  .pro-score-handoff a { justify-content: center; }
   .score-frame-shell { min-height: 68vh; height: 760px; }
   .listen-grid { grid-template-columns: 1fr; gap: 18px; }
   .marker-form { grid-template-columns: 1fr; }

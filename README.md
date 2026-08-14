@@ -88,6 +88,12 @@ tabs whose count-in differs from the recording. The selected score part can be
 removed from the broad stem mix with one action. Loop, speed, pitch, mute, and
 solo state are preserved in shareable song URLs.
 
+Ultimate Guitar account-only and Pro search results use a credential-safe
+handoff: the user signs in on Ultimate Guitar itself, then may open a Guitar Pro
+file that UG makes available in the embedded TabForge workspace. GrooveSlate
+never requests, receives, or stores Ultimate Guitar passwords or session
+cookies.
+
 Guided Drill turns any chart section, score selection, or A/B range into a
 progressive tempo workout. Configure starting speed, goal speed, step size, and
 passes per step; GrooveSlate counts completed loop passes and advances the

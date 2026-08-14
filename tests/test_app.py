@@ -536,6 +536,8 @@ def test_frontend_and_health(tmp_path: Path):
         assert '<section class="custom-mixer">' in homepage.text
         assert 'id="start-trainer"' in homepage.text
         assert 'id="score-sync-enabled"' in homepage.text
+        assert "UG PRO WORKS WITHOUT SHARING YOUR LOGIN" in homepage.text
+        assert "Your UG password and cookies never enter GrooveSlate" in homepage.text
         assert 'id="record-camera"' in homepage.text
         assert "function applyPitch" in javascript
         assert "tabforge.pathtpc.xyz/library" in client.get("/practice.js").text
