@@ -641,7 +641,12 @@ async function loadSession() {
       ? `${state.session.user} · Admin`
       : state.session.user;
     $("#current-user-name").textContent = `${state.session.user}’s`;
-    if (state.session.source_mode === "youtube") {
+    if (state.session.demo) {
+      document.body.classList.add("public-demo");
+      $("#challenge-drawer").classList.add("hidden");
+      $("#home-title").textContent = "GrooveSlate demo";
+      $("#home-intro").textContent = "Explore the synchronized mix, chart, tabs, guided drills, and recording studio.";
+    } else if (state.session.source_mode === "youtube") {
       document.body.classList.add("youtube-only");
       $$('[data-library-only]').forEach((element) => element.classList.add("hidden"));
       $("#challenge-source-copy").textContent = "Balanced between familiar songs, discoveries, and deep cuts in your chosen genre. Studio recordings only.";

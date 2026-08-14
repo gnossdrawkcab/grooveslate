@@ -274,17 +274,38 @@ def test_public_demo_job_is_visible_to_anonymous_guest(tmp_path: Path):
         artist="Nick Funyak",
     )
     job = app.state.store.create(track, "Pat")
-    app.state.store.update(job["id"], lambda saved: saved.update(public_demo=True))
+    app.state.store.update(
+        job["id"],
+        lambda saved: (
+            saved.update(public_demo=True, status="complete"),
+            saved["models"]["roformer"].update(status="complete"),
+        ),
+    )
+    other = app.state.store.create(
+        Track(**{**track.as_dict(), "id": "other-demo", "title": "Other Demo"}),
+        "Pat",
+    )
+    app.state.store.update(
+        other["id"],
+        lambda saved: (
+            saved.update(public_demo=True, status="complete"),
+            saved["models"]["roformer"].update(status="complete"),
+        ),
+    )
 
     with TestClient(app) as client:
         page = client.get("/songs/nick-funyak-your-biggest-fan-master")
         response = client.get(f"/api/jobs/{job['id']}")
+        session = client.get("/api/session")
+        completed = client.get("/api/completed")
         private_api = client.get("/api/library")
 
     assert page.status_code == 200
     assert "grooveslate_demo" in client.cookies
     assert response.status_code == 200
     assert response.json()["track"]["artist"] == "Nick Funyak"
+    assert session.json()["demo"] is True
+    assert [item["job_id"] for item in completed.json()["completed"]] == [job["id"]]
     assert private_api.status_code == 401
 
 

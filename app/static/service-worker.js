@@ -1,5 +1,5 @@
-const CACHE = "grooveslate-shell-v29";
-const SHELL = ["/styles.css?v=20260814-42", "/app.js?v=20260814-42", "/practice.js?v=20260814-42", "/logo.svg", "/manifest.webmanifest"];
+const CACHE = "grooveslate-shell-v30";
+const SHELL = ["/styles.css?v=20260814-43", "/app.js?v=20260814-43", "/practice.js?v=20260814-43", "/logo.svg", "/manifest.webmanifest"];
 
 self.addEventListener("install", (event) => {
   event.waitUntil(caches.open(CACHE).then((cache) => cache.addAll(SHELL)).then(() => self.skipWaiting()));

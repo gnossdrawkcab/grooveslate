@@ -415,6 +415,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             "role": "admin" if request.state.user.casefold() in admin_keys else "member",
             "users": list(users),
             "source_mode": "youtube" if config.youtube_only else "library",
+            "demo": request.state.user == "Demo",
         }
 
     @app.get("/api/health")
@@ -690,7 +691,12 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
     def list_completed(request: Request, limit: int = Query(default=250, ge=1, le=500)) -> dict:
         completed = []
         seen_tracks: set[str] = set()
+        active_demo = demo_job(request.cookies.get("grooveslate_demo", "")) \
+            if request.state.user == "Demo" else None
         for job in store.list(10000):
+            if request.state.user == "Demo":
+                if active_demo is None or job.get("id") != active_demo.get("id"):
+                    continue
             if not visible_to(job, request.state.user):
                 continue
             track_id = job.get("track", {}).get("id")
