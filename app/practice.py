@@ -51,6 +51,59 @@ def sanitize_midi_events(raw: object) -> list[dict]:
     return sorted(events, key=lambda event: event["time_ms"])
 
 
+def sanitize_reference_events(raw: object) -> list[dict]:
+    """Validate authored score hits supplied by the trusted TabForge bridge."""
+    if not isinstance(raw, list) or len(raw) > 50_000:
+        raise ValueError("Score reference is not valid")
+    events = []
+    for item in raw:
+        if not isinstance(item, dict):
+            raise ValueError("Score reference is not valid")
+        note = max(0, min(int(item.get("note", 0)), 127))
+        time_ms = round(max(0.0, min(float(item.get("time_ms", 0)), 86_400_000)), 2)
+        if note:
+            events.append({"note": note, "time_ms": time_ms})
+    return sorted(events, key=lambda event: event["time_ms"])
+
+
+def _reference_metrics(events: list[dict], references: list[dict], bpm: int) -> dict | None:
+    if not references:
+        return None
+    tolerance = round(max(55, min(120, 60_000 / max(30, min(bpm, 300)) / 8)))
+    actual_by_piece: dict[str, list[float]] = {}
+    expected_by_piece: dict[str, list[float]] = {}
+    for event in events:
+        if event.get("kind") == "note":
+            actual_by_piece.setdefault(NOTE_FAMILIES.get(event["note"], "other"), []).append(event["time_ms"])
+    for event in references:
+        expected_by_piece.setdefault(NOTE_FAMILIES.get(event["note"], "other"), []).append(event["time_ms"])
+    pieces = {}
+    matched_total = missed_total = extra_total = 0
+    for piece in sorted(set(actual_by_piece) | set(expected_by_piece)):
+        actual = actual_by_piece.get(piece, [])
+        expected = expected_by_piece.get(piece, [])
+        actual_index = expected_index = matched = missed = extra = 0
+        while actual_index < len(actual) and expected_index < len(expected):
+            delta = actual[actual_index] - expected[expected_index]
+            if abs(delta) <= tolerance:
+                matched += 1; actual_index += 1; expected_index += 1
+            elif delta < -tolerance:
+                extra += 1; actual_index += 1
+            else:
+                missed += 1; expected_index += 1
+        extra += len(actual) - actual_index
+        missed += len(expected) - expected_index
+        matched_total += matched; missed_total += missed; extra_total += extra
+        pieces[piece] = {"matched": matched, "missed": missed, "extra": extra}
+    denominator = 2 * matched_total + missed_total + extra_total
+    return {
+        "expected_hits": len(references), "matched_hits": matched_total,
+        "missed_hits": missed_total, "extra_hits": extra_total,
+        "accuracy": round(200 * matched_total / denominator) if denominator else 0,
+        "tolerance_ms": tolerance, "pieces": pieces,
+    }
+
+
 def _timing_metrics(events: list[dict], bpm: int, grid_offset_ms: float = 0) -> dict:
     notes = [event for event in events if event["kind"] == "note"]
     if not notes:
@@ -85,7 +138,8 @@ def _timing_metrics(events: list[dict], bpm: int, grid_offset_ms: float = 0) -> 
 
 def analyze_midi(
     events: list[dict], bpm: int, markers: list[dict], duration: float,
-    grid_offset_ms: float = 0,
+    grid_offset_ms: float = 0, references: list[dict] | None = None,
+    reference_confidence: str = "",
 ) -> dict:
     notes = [event for event in events if event["kind"] == "note"]
     velocities = [event["velocity"] for event in notes]
@@ -101,12 +155,14 @@ def analyze_midi(
         end = (float(boundaries[index + 1].get("time", duration)) * 1000
                if index + 1 < len(boundaries) else duration * 1000)
         section_events = [event for event in notes if start <= event["time_ms"] < end]
+        section_references = [event for event in (references or []) if start <= event["time_ms"] < end]
         metrics = _timing_metrics(section_events, bpm, grid_offset_ms)
         sections.append({
             "label": str(marker.get("label", "Section"))[:40],
             "start": round(start / 1000, 2),
             "end": round(end / 1000, 2),
             "hits": len(section_events),
+            "reference": _reference_metrics(section_events, section_references, bpm),
             **metrics,
         })
     return {
@@ -127,6 +183,10 @@ def analyze_midi(
         },
         "pieces": pieces,
         **_timing_metrics(notes, bpm, grid_offset_ms),
+        "reference": ({
+            **(_reference_metrics(notes, references or [], bpm) or {}),
+            "confidence": reference_confidence,
+        } if references else None),
         "sections": sections,
     }
 
@@ -203,6 +263,7 @@ class PracticeStore:
                 "trainer_passes": 2,
             },
             "takes": [],
+            "drills": [],
             "updated_at": _now(),
         }
 
@@ -233,10 +294,15 @@ class PracticeStore:
             os.replace(temporary, path)
         return session
 
-    def update_chart(self, user: str, job_id: str, markers: list[dict], settings: dict) -> dict:
+    def update_chart(
+        self, user: str, job_id: str, markers: list[dict], settings: dict,
+        drills: list[dict] | None = None,
+    ) -> dict:
         session = self.get(user, job_id)
         session["markers"] = markers
         session["settings"] = {**session["settings"], **settings}
+        if drills is not None:
+            session["drills"] = drills[-100:]
         return self.save(session)
 
     def create_take(self, user: str, job_id: str, suffix: str, metadata: dict) -> tuple[dict, Path]:

@@ -371,12 +371,18 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
                     "trainer_goal": 1.0, "trainer_step": 0.05,
                     "trainer_passes": 2,
                 },
+                "drills": [{
+                    "name": "Chorus climb", "start": 42.5, "end": 58,
+                    "start_speed": 0.6, "goal_speed": 1.0,
+                    "completed_at": "2026-08-14T00:00:00Z",
+                }],
             },
         )
         assert chart.status_code == 200
         assert [marker["id"] for marker in chart.json()["markers"]] == ["intro", "chorus-1"]
         assert chart.json()["settings"]["bpm"] == 128
         assert chart.json()["settings"]["score_offset_seconds"] == 1.25
+        assert chart.json()["drills"][0]["name"] == "Chorus climb"
 
         uploaded = client.post(
             f"/api/jobs/{job['id']}/practice/takes",
@@ -385,6 +391,8 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
                 "notes": "Strong ending",
                 "duration": "123.4",
                 "midi_events": '[{"kind":"note","time_ms":100,"channel":9,"note":38,"velocity":112},{"kind":"cc","time_ms":120,"channel":9,"control":4,"value":40}]',
+                "reference_events": '[{"time_ms":102,"note":38},{"time_ms":200,"note":36}]',
+                "reference_confidence": "authored-drum-score",
             },
             files={"file": ("take.webm", b"recording" * 64, "audio/webm")},
         )
@@ -395,6 +403,10 @@ def test_practice_chart_and_recorded_takes_are_persistent_and_private(tmp_path: 
         assert take["analysis"]["pieces"] == {"snare": 1}
         assert take["analysis"]["timing_bias"] == "rushing"
         assert take["analysis"]["velocity"]["consistency"] == 100
+        assert take["analysis"]["reference"]["matched_hits"] == 1
+        assert take["analysis"]["reference"]["missed_hits"] == 1
+        assert take["analysis"]["reference"]["extra_hits"] == 0
+        assert take["analysis"]["reference"]["accuracy"] == 67
         assert client.get(take["audio_url"]).content == b"recording" * 64
         assert client.get(take["events_url"]).json()["events"][0]["note"] == 38
         midi = client.get(take["midi_url"])

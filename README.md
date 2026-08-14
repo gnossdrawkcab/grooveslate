@@ -92,7 +92,8 @@ Guided Drill turns any chart section, score selection, or A/B range into a
 progressive tempo workout. Configure starting speed, goal speed, step size, and
 passes per step; GrooveSlate counts completed loop passes and advances the
 recording automatically. After MIDI takes, the weakest scored section becomes
-the suggested next drill.
+the suggested next drill. Completed workouts are saved as mastered loops with
+their start and goal tempos, and can be reopened from the song workbench.
 
 The chart is a drummer-focused road map with bar numbers, rehearsal marks,
 section lengths, dynamics, groove texture, and dedicated cues for fills, band
@@ -118,6 +119,12 @@ grid consistency and dynamics by section, compares attempt scores, and exports
 standard MIDI for a DAW. Takes, notes, and the selected best take are saved
 under `${DATA_ROOT}/practice` and can only be accessed by their owner. See
 `app/static/drum-kit/LICENSE.md` for sample provenance.
+
+When the synchronized TabForge part is an authored percussion score,
+GrooveSlate securely transfers its expected hit timeline into the take upload.
+The take report then adds matched, missed, and extra hits by kit-piece family
+with a tempo-aware timing tolerance. Guitar, text, and uncertain tabs never
+pretend to be drum-performance references.
 
 Camera Takes optionally combine a 720p browser camera track with the mixed
 backing and live drum audio. Audio-only and video takes share the same private

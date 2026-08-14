@@ -33,7 +33,10 @@ from .community import CommunityStore
 from .jobs import JobQueue, JobStore, MODELS, Processor
 from .imports import ImportService
 from .library import MusicLibrary
-from .practice import PracticeStore, analyze_midi, midi_file, sanitize_midi_events
+from .practice import (
+    PracticeStore, analyze_midi, midi_file, sanitize_midi_events,
+    sanitize_reference_events,
+)
 from .songmap import SongMapper
 
 
@@ -83,9 +86,19 @@ class PracticeSettings(BaseModel):
     trainer_passes: int = Field(default=2, ge=1, le=10)
 
 
+class PracticeDrill(BaseModel):
+    name: str = Field(default="Practice loop", min_length=1, max_length=80)
+    start: float = Field(ge=0, le=86_400)
+    end: float = Field(gt=0, le=86_400)
+    start_speed: float = Field(ge=0.5, le=1.25)
+    goal_speed: float = Field(ge=0.5, le=1.25)
+    completed_at: str = Field(max_length=40)
+
+
 class PracticeUpdate(BaseModel):
     markers: list[ChartMarker] = Field(default_factory=list, max_length=300)
     settings: PracticeSettings = Field(default_factory=PracticeSettings)
+    drills: list[PracticeDrill] = Field(default_factory=list, max_length=100)
 
 
 class TakeUpdate(BaseModel):
@@ -788,6 +801,7 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             job_id,
             markers,
             payload.settings.model_dump(),
+            [drill.model_dump() for drill in payload.drills],
         )
         return practice_response(request.state.user, job_id, session)
 
@@ -820,6 +834,8 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
         notes: str = Form(default=""),
         duration: float = Form(default=0),
         midi_events: str = Form(default="[]"),
+        reference_events: str = Form(default="[]"),
+        reference_confidence: str = Form(default=""),
     ) -> dict:
         try:
             owned_job(job_id, request.state.user)
@@ -843,8 +859,9 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             raise HTTPException(status_code=400, detail="This recording format is not supported")
         try:
             events = sanitize_midi_events(json.loads(midi_events))
+            references = sanitize_reference_events(json.loads(reference_events))
         except (ValueError, TypeError, json.JSONDecodeError):
-            raise HTTPException(status_code=400, detail="MIDI capture is not valid") from None
+            raise HTTPException(status_code=400, detail="MIDI capture or score reference is not valid") from None
         take_duration = max(0, min(float(duration), 86_400))
         session = practice.get(request.state.user, job_id)
         analysis = analyze_midi(
@@ -853,6 +870,8 @@ button{{width:100%;height:48px;margin-top:10px;border:0;background:var(--orange)
             session.get("markers", []),
             take_duration,
             float((session.get("auto_map", {}).get("beats") or [0])[0]) * 1000,
+            references,
+            reference_confidence.strip()[:40],
         ) if events else None
         take, destination = practice.create_take(
             request.state.user,

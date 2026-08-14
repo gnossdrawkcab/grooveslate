@@ -598,6 +598,12 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .trainer-controls button span { float: right; margin-left: 12px; }
 .trainer-progress { height: 3px; margin-top: 10px; background: var(--line); overflow: hidden; }
 .trainer-progress i { display: block; width: 0; height: 100%; background: var(--orange); transition: width .25s; }
+.drill-history { display: flex; gap: 6px; margin-top: 9px; overflow-x: auto; }
+.drill-history > span { flex: 0 0 auto; padding: 6px 8px; border: 1px solid var(--line); color: var(--muted); font: 6px var(--mono); }
+.drill-history > button { flex: 0 0 auto; display: grid; gap: 2px; padding: 6px 8px; border: 1px solid var(--line); background: transparent; color: var(--ink); text-align: left; cursor: pointer; }
+.drill-history > button:hover { border-color: var(--orange); }
+.drill-history b { font: 7px var(--mono); }
+.drill-history small { color: var(--muted); font: 6px var(--mono); }
 .record-intro h5 { margin: 7px 0 5px; font-size: 19px; }
 .record-intro p { margin: 0 0 16px; }
 .secure-recording-warning { margin: 0 0 13px; padding: 10px; border: 1px solid var(--orange); color: var(--ink) !important; background: color-mix(in srgb, var(--orange) 10%, transparent); font: 8px/1.5 var(--mono) !important; }
@@ -675,6 +681,11 @@ kbd { font: 8px var(--mono); color: var(--muted); padding: 3px 5px; border: 1px 
 .section-scores strong { grid-column: 2; grid-row: 1 / 3; align-self: center; color: var(--orange); font: 15px var(--mono); }
 .guided-drill-heading p button { border: 0; padding: 0; background: transparent; color: var(--orange); font: inherit; font-weight: 700; text-decoration: underline; cursor: pointer; }
 .analysis-note { margin: 7px 0 0; color: var(--muted); font: 6px/1.5 var(--mono); }
+.reference-grade { display: grid; grid-template-columns: auto auto repeat(3, minmax(70px, 1fr)) auto; align-items: center; gap: 8px; padding: 9px; border: 1px solid var(--lime); border-top: 0; background: color-mix(in srgb, var(--lime) 6%, transparent); }
+.reference-grade > strong { color: var(--lime); font: 18px var(--mono); }
+.reference-grade span, .reference-grade b, .reference-grade small { font: 6px var(--mono); }
+.reference-grade span, .reference-grade small { color: var(--muted); }
+.reference-grade b { color: var(--ink); }
 .live-phase { display: grid; grid-template-columns: 1fr auto; gap: 6px 12px; padding: 10px 0 3px; font: 8px var(--mono); }
 .phase-name { color: var(--orange); text-transform: uppercase; letter-spacing: .06em; }
 .accent .phase-name { color: #83911f; }
@@ -971,6 +982,8 @@ kbd, .folder-row select, .folder-row span, .search-source-heading,
   .performance-detail { grid-column: 1 / -1; }
   .performance-detail summary span { display: none; }
   .performance-stats { grid-template-columns: 1fr 1fr; }
+  .reference-grade { grid-template-columns: auto 1fr 1fr 1fr; }
+  .reference-grade small { grid-column: 1 / -1; }
   .performance-stats span:nth-child(2) { border-right: 0; }
   .stem-mixer { margin: 14px 0; padding: 11px; }
   .stem-buttons { gap: 7px; }

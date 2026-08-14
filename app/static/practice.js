@@ -44,6 +44,7 @@
     scorePosition: 0,
     scoreClockFrame: null,
     scoreLastSent: 0,
+    scoreReference: null,
     trainer: { active: false, passes: 0, rate: 1 },
   };
 
@@ -117,7 +118,18 @@
     practiceState.session.settings.score_offset_seconds = Math.max(-120, Math.min(120, offset));
     renderSettings();
     scheduleSave();
+    syncScoreUrl();
     sendScoreClock(true);
+  }
+
+  function syncScoreUrl(message = {}) {
+    if (!window.location.pathname.startsWith("/songs/")) return;
+    const url = new URL(window.location.href);
+    if (message.scoreId) url.searchParams.set("tab", String(message.scoreId));
+    if (Number.isInteger(Number(message.trackIndex))) url.searchParams.set("part", String(message.trackIndex));
+    if (Math.abs(scoreOffset()) > .001) url.searchParams.set("offset", scoreOffset().toFixed(2));
+    else url.searchParams.delete("offset");
+    window.history.replaceState(window.history.state, "", `${url.pathname}${url.search}${url.hash}`);
   }
 
   function handleScoreMessage(event) {
@@ -133,6 +145,12 @@
       practiceState.scoreTrack = message.track || "selected part";
       $("#practice-score-part").disabled = !message.track;
       setScoreStatus(message.track ? `SYNCED · ${message.track}` : "SCORE READY", true);
+      const linkedParams = new URLSearchParams(window.location.search);
+      const linkedPart = linkedParams.has("part") ? Number(linkedParams.get("part")) : NaN;
+      syncScoreUrl({ ...message, trackIndex: Number.isInteger(linkedPart) ? linkedPart : message.trackIndex });
+      if (Number.isInteger(linkedPart) && linkedPart !== Number(message.trackIndex)) {
+        postToScore("grooveslate:track-select", { index: linkedPart });
+      }
       sendScoreClock(true);
       sendScoreLoop();
     } else if (message.type === "tabforge:position") {
@@ -157,9 +175,17 @@
       }
     } else if (message.type === "tabforge:loop-clear" && settings().score_sync) {
       app.clearLoopRange?.();
+    } else if (message.type === "tabforge:reference") {
+      practiceState.scoreReference = message.confidence === "authored-drum-score"
+        ? { confidence: message.confidence, hits: Array.isArray(message.hits) ? message.hits : [] }
+        : null;
+      if (practiceState.scoreReference?.hits.length) {
+        $("#score-sync-status").textContent = `${practiceState.scoreReference.hits.length.toLocaleString()} authored drum hits ready for take grading`;
+      }
     } else if (message.type === "tabforge:track") {
       practiceState.scoreTrack = message.track || "selected part";
       $("#practice-score-part").disabled = false;
+      syncScoreUrl({ trackIndex: Number(message.index) });
       setScoreStatus(`SYNCED · ${message.track || "selected part"}`, true);
     }
   }
@@ -167,6 +193,10 @@
   window.addEventListener("message", handleScoreMessage);
 
   function bandScoreUrl() {
+    const linked = new URLSearchParams(window.location.search).get("tab");
+    if (linked && /^[A-Za-z0-9_-]{1,80}$/.test(linked)) {
+      return `https://tabforge.pathtpc.xyz/songs/${encodeURIComponent(linked)}?embed=1`;
+    }
     const track = practiceState.job?.track || {};
     const title = String(track.title || "")
       .replace(/\((?:official|lyrics?|audio|video|hd)[^)]*\)/gi, " ")
@@ -182,6 +212,7 @@
     const url = bandScoreUrl();
     if (force || frame.dataset.song !== url) {
       practiceState.scoreReady = false;
+      practiceState.scoreReference = null;
       setScoreStatus("SEARCHING TABFORGE…");
       frame.dataset.song = url;
       frame.src = force ? `${url}&reload=${Date.now()}` : url;
@@ -218,7 +249,11 @@
       practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice`, {
         method: "PUT",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ markers: practiceState.session.markers, settings: practiceState.session.settings }),
+        body: JSON.stringify({
+          markers: practiceState.session.markers,
+          settings: practiceState.session.settings,
+          drills: practiceState.session.drills || [],
+        }),
       });
       setSaveState("SAVED");
       app.refreshPracticeLibrary();
@@ -508,6 +543,7 @@
     if (practiceState.audio) practiceState.audio.volume = value.backing_volume;
     if (practiceState.scoreReady) setScoreStatus($("#score-load-status").textContent, true);
     renderPracticePrescription();
+    renderDrillHistory();
   }
 
   function weakestSection() {
@@ -533,6 +569,32 @@
     copy.textContent = app.getLoopRange?.()
       ? "Your A/B loop is ready. GrooveSlate will repeat it and raise the tempo after clean passes."
       : "Set an A/B loop above, drag measures in Tabs, or loop a chart section to begin.";
+  }
+
+  function drillName(range) {
+    const markers = practiceState.session?.markers || [];
+    const marker = [...markers].reverse().find((item) => item.time <= range.start + .25);
+    return marker?.label || `Loop ${app.formatTime(range.start)}–${app.formatTime(range.end)}`;
+  }
+
+  function renderDrillHistory() {
+    const list = $("#drill-history");
+    const drills = (practiceState.session?.drills || []).slice(-8).reverse();
+    if (!drills.length) {
+      list.innerHTML = "<span>No mastered loops yet. Completed drills appear here.</span>";
+      return;
+    }
+    list.innerHTML = drills.map((drill, index) => `
+      <button type="button" data-history-drill="${index}" title="Load this mastered loop">
+        <b>✓ ${app.escapeHtml(drill.name)}</b>
+        <small>${Math.round(drill.start_speed * 100)}→${Math.round(drill.goal_speed * 100)}% · ${new Date(drill.completed_at).toLocaleDateString()}</small>
+      </button>`).join("");
+    $$('[data-history-drill]', list).forEach((button) => button.addEventListener("click", () => {
+      const drill = drills[Number(button.dataset.historyDrill)];
+      app.setLoopRange?.(drill.start, drill.end);
+      app.setPlaybackRate?.(drill.goal_speed);
+      app.toast(`${drill.name} loaded at mastered tempo`);
+    }));
   }
 
   function setTrainerProgress() {
@@ -587,6 +649,18 @@
         trainer.active = false;
         trainer.completed = true;
         practiceState.audio.pause();
+        const range = app.getLoopRange?.();
+        if (range) {
+          practiceState.session.drills = practiceState.session.drills || [];
+          practiceState.session.drills.push({
+            name: drillName(range), start: range.start, end: range.end,
+            start_speed: Number(settings().trainer_start) || .6,
+            goal_speed: goal, completed_at: new Date().toISOString(),
+          });
+          practiceState.session.drills = practiceState.session.drills.slice(-100);
+          renderDrillHistory();
+          scheduleSave();
+        }
         app.toast(`Drill complete at ${Math.round(goal * 100)}% — record a full take next`);
       } else {
         trainer.rate = Math.min(goal, trainer.rate + (Number(settings().trainer_step) || .05));
@@ -621,7 +695,7 @@
           ? `<video controls playsinline preload="metadata" src="${app.escapeHtml(take.audio_url)}"></video>`
           : `<audio controls preload="metadata" src="${app.escapeHtml(take.audio_url)}"></audio>`}
         <div class="take-actions">${take.publication ? `<button class="published-take" data-unpublish-take="${take.publication.id}" type="button" title="Published to Community Takes; click to make private">PUBLIC</button>` : `<button data-publish-take="${take.id}" type="button" title="Publish this take for other signed-in drummers to score">PUBLISH</button>`}${take.midi_url ? `<a href="${app.escapeHtml(take.midi_url)}" title="Download editable MIDI">MIDI</a>` : ""}<a href="${app.escapeHtml(take.download_url)}" title="Download take">AUDIO</a><button data-delete-take="${take.id}" type="button" title="Delete take">×</button></div>
-        ${analysis ? `<details class="performance-detail"><summary>Performance map &amp; section analysis <span>${analysis.hit_count} hits · ${analysis.mean_offset_ms}ms mean grid error · ${analysis.timing_bias || "timing mapped"}</span></summary><canvas class="take-performance-map" data-take-map="${take.id}" tabindex="0" aria-label="Waveform-aligned MIDI hits"></canvas><div class="performance-stats"><span><b>${analysis.velocity.average ?? "—"}</b> AVG VELOCITY</span><span><b>${analysis.velocity.consistency ?? "—"}</b> DYNAMIC CONTROL</span><span><b>${analysis.signed_offset_ms == null ? "—" : `${analysis.signed_offset_ms > 0 ? "+" : ""}${analysis.signed_offset_ms}ms`}</b> ${analysis.timing_bias === "rushing" ? "EARLY / RUSH" : analysis.timing_bias === "dragging" ? "LATE / DRAG" : "TIMING CENTER"}</span><span><b>${analysis.timing_spread_ms ?? "—"}ms</b> TIMING SPREAD</span></div><div class="section-scores">${analysis.sections.map((section) => `<button type="button" data-drill-start="${section.start}" data-drill-end="${section.end}" title="Practice this section"><b>${app.escapeHtml(section.label)}</b><i>${section.hits} hits · ${section.timing_bias || "mapped"}</i><strong>${section.pocket_score ?? "—"}</strong></button>`).join("")}</div><p class="analysis-note">Pocket measures timing against the configured sixteenth-note grid. Click a section score to turn it into your next drill. Score-reference missed/extra-note grading appears when a synchronized drum score supplies a reference part.</p></details>` : ""}
+        ${analysis ? `<details class="performance-detail"><summary>Performance map &amp; section analysis <span>${analysis.hit_count} hits · ${analysis.mean_offset_ms}ms mean grid error · ${analysis.timing_bias || "timing mapped"}</span></summary><canvas class="take-performance-map" data-take-map="${take.id}" tabindex="0" aria-label="Waveform-aligned MIDI hits"></canvas><div class="performance-stats"><span><b>${analysis.velocity.average ?? "—"}</b> AVG VELOCITY</span><span><b>${analysis.velocity.consistency ?? "—"}</b> DYNAMIC CONTROL</span><span><b>${analysis.signed_offset_ms == null ? "—" : `${analysis.signed_offset_ms > 0 ? "+" : ""}${analysis.signed_offset_ms}ms`}</b> ${analysis.timing_bias === "rushing" ? "EARLY / RUSH" : analysis.timing_bias === "dragging" ? "LATE / DRAG" : "TIMING CENTER"}</span><span><b>${analysis.timing_spread_ms ?? "—"}ms</b> TIMING SPREAD</span></div>${analysis.reference ? `<div class="reference-grade"><strong>${analysis.reference.accuracy}%</strong><span>SCORE ACCURACY</span><b>${analysis.reference.matched_hits} matched</b><b>${analysis.reference.missed_hits} missed</b><b>${analysis.reference.extra_hits} extra</b><small>${app.escapeHtml(analysis.reference.confidence || "authored score")} · ±${analysis.reference.tolerance_ms}ms</small></div>` : ""}<div class="section-scores">${analysis.sections.map((section) => `<button type="button" data-drill-start="${section.start}" data-drill-end="${section.end}" title="Practice this section"><b>${app.escapeHtml(section.label)}</b><i>${section.hits} hits · ${section.reference ? `${section.reference.missed_hits} missed` : section.timing_bias || "mapped"}</i><strong>${section.reference?.accuracy ?? section.pocket_score ?? "—"}</strong></button>`).join("")}</div><p class="analysis-note">Pocket measures timing against the configured sixteenth-note grid. When an authored drum score is selected, score accuracy also compares matching kit pieces and reports missed and extra hits. Click any section to drill it.</p></details>` : ""}
       </article>`;
     }).join("");
     $$(".take-row audio, .take-row video", list).forEach((player) => player.addEventListener("play", () => {
@@ -734,6 +808,11 @@
     practiceState.audio = app.getPracticeAudio();
     try {
       practiceState.session = await app.api(`/api/jobs/${job.id}/practice`);
+      const linkedOffset = Number(new URLSearchParams(window.location.search).get("offset"));
+      if (Number.isFinite(linkedOffset) && linkedOffset >= -120 && linkedOffset <= 120
+          && new URLSearchParams(window.location.search).has("offset")) {
+        practiceState.session.settings.score_offset_seconds = linkedOffset;
+      }
       studio.classList.remove("hidden");
       renderMarkers();
       renderSettings();
@@ -1283,6 +1362,12 @@
     form.append("notes", $("#take-notes").value.trim());
     form.append("duration", String(duration));
     form.append("midi_events", JSON.stringify(practiceState.midiEvents));
+    const reference = practiceState.scoreReference?.hits || [];
+    form.append("reference_events", JSON.stringify(reference.map((hit) => ({
+      note: Number(hit.note),
+      time_ms: Math.max(0, (Number(hit.time) + scoreOffset()) * 1000),
+    }))));
+    form.append("reference_confidence", practiceState.scoreReference?.confidence || "");
     try {
       practiceState.session = await app.api(`/api/jobs/${practiceState.job.id}/practice/takes`, { method: "POST", body: form });
       renderTakes();
@@ -1472,6 +1557,7 @@
     disableCamera();
     window.cancelAnimationFrame(practiceState.scoreClockFrame);
     practiceState.scoreReady = false;
+    practiceState.scoreReference = null;
     practiceState.job = null; practiceState.session = null; practiceState.waveform = null; practiceState.waveformJobId = null;
   });
   $("#reload-band-score").addEventListener("click", () => loadBandScore(true));
